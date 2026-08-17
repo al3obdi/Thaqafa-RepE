@@ -24,11 +24,7 @@ import pytest
 import torch
 
 from src.models.rep_engine import RESID_POST_HOOK, CulturalRepE, InjectionHandle
-from src.utils.evaluation import (
-    SteeringResult,
-    evaluate_steering,
-    summarize_sweep,
-)
+from src.utils.evaluation import SteeringResult, evaluate_steering, summarize_sweep
 
 TINY_TOKENIZER_NAME = "sshleifer/tiny-gpt2"
 DATASET_PATH = Path(__file__).resolve().parents[1] / "data" / "datasets" / "cultural_concepts.jsonl"
@@ -699,9 +695,7 @@ class TestTinyModelInjection:
 
         assert torch.allclose(amplified - baseline, baseline - suppressed, atol=1e-5)
 
-    def test_zero_strength_leaves_the_activation_untouched(
-        self, tiny_engine: CulturalRepE
-    ) -> None:
+    def test_zero_strength_leaves_the_activation_untouched(self, tiny_engine: CulturalRepE) -> None:
         prompts = ["A guest arrives."]
         baseline = _resid_post(tiny_engine, prompts, layer=2)
 

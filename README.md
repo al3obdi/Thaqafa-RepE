@@ -55,15 +55,24 @@ that other under-represented cultures can adapt, not a single benchmark score.
 - **Scoped steering** — a `steering()` context manager that removes exactly the
   hooks it added, even when the body raises, so a failed generation cannot leave
   the model silently steered.
-- **Evaluation harness** — sweep injection strength and measure both what the
-  model generates and how much fluency it loses (`src.utils.evaluation`).
+- **Evaluation harness** — sweep injection strength and layer sets, measuring
+  steering *effect* (KL divergence) against fluency *cost* (cross-entropy)
+  (`src.utils.evaluation`).
+- **Linear probes** — cross-validated logistic regression per layer, reported
+  against the majority-class floor, so the extraction layer is chosen from
+  evidence rather than convention (`src.utils.probes`).
+- **Prompt-engineering baselines** — direct, persona and Arabic instruction
+  framings, so steering is measured against the intervention any practitioner
+  would try first (`src.utils.baselines`).
+- **Paper scaffold** — a LaTeX skeleton with the methodology written out and
+  every unwritten number flagged (`docs/research_paper`).
 - **Research-grade tooling** — Poetry-pinned dependencies, pre-commit hooks,
   type hints throughout, and CI running ruff, black and pytest.
 
-> **Status: extraction and injection implemented.** Model loading, activation
-> collection, contrastive extraction, hook-based injection and the steering
-> context manager all work and are tested on CPU. What remains is evaluation at
-> scale: linear probes, layer sweeps and human rating of cultural grounding.
+> **Status: pipeline complete, experiments pending.** Extraction, injection,
+> linear probes, layer-set sweeps and prompt-engineering baselines all work and
+> are tested on CPU. What remains is running them on real models and having
+> native speakers rate the results — no research findings are claimed yet.
 
 ### How extraction works
 
@@ -200,6 +209,23 @@ handles = engine.inject_vector("diyafa_001", strength=1.5)
 engine.remove_hooks(handles)   # or remove_hooks() to detach everything
 ```
 
+### Find the right layer with a probe
+
+```python
+from src.utils.probes import sweep_layers_with_probe, best_layer
+
+results = sweep_layers_with_probe(engine, "diyafa_001")
+for layer, result in results.items():
+    print(layer, round(result.accuracy, 3), "vs chance", result.chance)
+
+vector = engine.extract_vector("diyafa_001", layer=best_layer(results))
+```
+
+Accuracies are cross-validated and reported against the majority-class floor.
+Both matter: with `d_model` features and a handful of prompts a linear
+classifier separates almost any labelling of the *training* set, and on an
+unbalanced split 0.75 can be worse than always guessing the majority class.
+
 ### Measure the strength/fluency trade-off
 
 ```python
@@ -239,6 +265,48 @@ poetry run python scripts/inject_concepts.py --concept diyafa_001 --strength 1.5
 poetry run python scripts/evaluate.py --concept diyafa_001 --min -2 --max 2 --steps 9
 ```
 
+### Compare against prompt engineering
+
+```python
+from src.utils.baselines import compare_steering_vs_prompting
+
+comparison = compare_steering_vs_prompting(
+    engine,
+    concept="diyafa_001",
+    concept_name="Arab hospitality",
+    prompts=["What should I do when a guest arrives unannounced?"],
+    strength=1.5,
+)
+
+for row in comparison.rows():
+    print(row)
+```
+
+Steering has to beat "answer with Arab hospitality in mind" to justify needing
+white-box access to the model. The comparison runs an unprompted control, the
+instruction framings and the steered condition on the same prompts, and scores
+every condition's *output* with the same unmodified model so the fluency numbers
+are comparable. It deliberately names no winner: which answer is more culturally
+grounded is a question for human raters.
+
+### Sweep layer sets
+
+```python
+from src.utils.evaluation import evaluate_layer_sets, summarize_layer_sets
+
+grid = evaluate_layer_sets(
+    engine, "diyafa_001", prompts,
+    layer_sets=[[14], [13, 14], [12, 13, 14]],
+    strengths=[1.0, 2.0],
+)
+for row in summarize_layer_sets(grid):
+    print(row)   # effect_kl against mean_loss, per configuration
+```
+
+Effect and cost are reported separately on purpose. A configuration that leaves
+fluency untouched because it did nothing is not a cheap win, and cross-entropy
+alone cannot tell the two apart.
+
 ## Project Structure
 
 ```text
@@ -256,14 +324,16 @@ Thaqafa-RepE/
 │   ├── data/dataset_builder.py    # CulturalConcept dataclass and loaders
 │   ├── data/contrastive.py        # Neutral baseline prompts (AR + EN)
 │   ├── models/rep_engine.py       # CulturalRepE: extraction and injection
-│   ├── utils/evaluation.py        # Strength sweeps, fluency guardrail
+│   ├── utils/baselines.py         # Prompt-engineering comparison conditions
+│   ├── utils/evaluation.py        # Strength and layer sweeps, effect vs cost
+│   ├── utils/probes.py            # Cross-validated linear probes per layer
 │   └── utils/visualization.py     # Layer sweeps, similarity heatmaps
 ├── data/
 │   ├── raw/                       # Untracked source material
 │   ├── processed/                 # Untracked intermediate artefacts
 │   └── datasets/                  # Tracked, curated concept dataset (JSONL)
 ├── tests/                         # pytest suite
-├── docs/research_paper/           # Paper drafts and figures
+├── docs/research_paper/           # LaTeX paper scaffold and build script
 ├── .env.example                   # Configuration template (no secrets)
 ├── .pre-commit-config.yaml
 ├── pyproject.toml                 # Poetry dependencies and tool config
@@ -300,8 +370,10 @@ Each line of `data/datasets/cultural_concepts.jsonl` is one JSON object:
 - [x] **Phase 3 — Concept injection.** Hook-based injection with correct
       broadcasting, a scoped `steering()` context manager, and a strength sweep
       that reports generations alongside a fluency guardrail.
-- [ ] **Phase 4 — Evaluation.** Human evaluation of cultural grounding, plus
-      automatic checks for factuality and fluency regressions.
+- [x] **Phase 4a — Evaluation tooling.** Linear probes, layer-set grids,
+      prompt-engineering baselines and the LaTeX paper scaffold.
+- [ ] **Phase 4b — Running the experiments.** Real models, native-speaker
+      rating of cultural grounding, and filling in the paper's results.
 - [ ] **Phase 5 — Publication.** Release the dataset, vectors and paper.
 
 ## Citation
