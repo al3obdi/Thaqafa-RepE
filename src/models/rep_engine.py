@@ -22,15 +22,31 @@ representation engineering literature:
 Averaging over a set of neutral prompts removes the components of the residual
 stream that merely encode "this is an ordinary sentence", which would otherwise
 dominate the raw mean and make every concept vector point in roughly the same
-direction. The result is L2-normalised so that the injection strength used in
-Phase 3 is the only magnitude knob.
+direction. The result is L2-normalised so that the injection strength is the
+only magnitude knob.
 
-Injection is still a stub; it is the subject of Phase 3.
+Injection is the mirror image of extraction. A forward hook on the same
+residual stream point adds ``strength * v_concept`` to every position of the
+activation as it flows past:
+
+.. code-block:: text
+
+    resid_post[layer] <- resid_post[layer] + strength * v_concept
+
+Because the vector is a unit direction, ``strength`` is measured in residual
+stream norms: positive values amplify the concept, negative values suppress it,
+and zero reproduces the unsteered model exactly. Hooks mutate the model until
+they are removed, so the recommended entry point is the :meth:`
+CulturalRepE.steering` context manager, which guarantees cleanup even when the
+body raises.
 """
 
 from __future__ import annotations
 
 import logging
+from collections.abc import Iterator
+from contextlib import contextmanager
+from dataclasses import dataclass, field
 from inspect import signature
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -86,6 +102,54 @@ def resolve_dtype(dtype: str | torch.dtype) -> torch.dtype:
     return _DTYPE_ALIASES[key]
 
 
+@dataclass
+class InjectionHandle:
+    """A single live steering hook, and the means to take it back off.
+
+    TransformerLens's ``add_hook`` returns nothing; it appends a ``LensHandle``
+    to the hook point's ``fwd_hooks`` list. This wrapper captures that handle so
+    an individual injection can be undone without resetting every hook on the
+    model - which matters because callers may have their own caching or
+    ablation hooks attached that must survive.
+
+    Attributes:
+        concept: Concept whose vector this hook injects.
+        layer: Block the hook is attached to.
+        hook_name: Full TransformerLens hook name.
+        strength: Coefficient applied to the concept vector.
+    """
+
+    concept: str
+    layer: int
+    hook_name: str
+    strength: float
+    _hook_point: Any = field(repr=False)
+    _lens_handle: Any = field(repr=False)
+    _removed: bool = field(default=False, repr=False)
+
+    @property
+    def is_active(self) -> bool:
+        """Whether the hook is still attached to the model."""
+        return not self._removed
+
+    def remove(self) -> None:
+        """Detach the hook and drop it from the hook point's bookkeeping.
+
+        Removing the PyTorch handle alone would leave a stale ``LensHandle``
+        behind, which makes ``model.fwd_hooks`` and TransformerLens's own hook
+        accounting disagree with reality. Both are cleaned up here. Calling this
+        twice is safe.
+        """
+        if self._removed:
+            return
+
+        self._lens_handle.hook.remove()
+        self._hook_point.fwd_hooks = [
+            handle for handle in self._hook_point.fwd_hooks if handle is not self._lens_handle
+        ]
+        self._removed = True
+
+
 class CulturalRepE:
     """Extract and inject cultural concept vectors for a causal language model.
 
@@ -109,6 +173,8 @@ class CulturalRepE:
         model: The loaded model, or ``None`` until :meth:`load_model` is called.
         tokenizer: The loaded tokenizer, or ``None`` until :meth:`load_model`
             is called.
+        _active_hooks: Steering hooks currently attached by this engine. Use
+            :meth:`remove_hooks` rather than mutating it directly.
 
     Example:
         >>> engine = CulturalRepE("meta-llama/Meta-Llama-3-8B-Instruct")
@@ -145,7 +211,7 @@ class CulturalRepE:
         self.tokenizer: Any | None = None
         self.concept_vectors: dict[str, torch.Tensor] = {}
         self.extraction_layers: dict[str, int] = {}
-        self._active_hooks: list[Any] = []
+        self._active_hooks: list[InjectionHandle] = []
 
     # ------------------------------------------------------------------
     # Model loading
@@ -587,33 +653,105 @@ class CulturalRepE:
         return destination
 
     # ------------------------------------------------------------------
-    # Injection (Phase 3)
+    # Injection and steering
     # ------------------------------------------------------------------
+
+    @property
+    def active_hook_names(self) -> list[str]:
+        """Hook names currently carrying an injection, in attachment order."""
+        return [handle.hook_name for handle in self._active_hooks if handle.is_active]
+
+    def _resolve_injection_layers(self, concept: str, layers: list[int] | None) -> list[int]:
+        """Decide which layers an injection should target.
+
+        Args:
+            concept: Concept being injected, used to look up the layer its
+                vector was extracted from.
+            layers: Explicit layers. ``None`` falls back to the extraction
+                layer, or to :attr:`middle_layer` if the vector was cached
+                without one (for example assigned directly in a test).
+
+        Returns:
+            Non-negative, de-duplicated layer indices in ascending order.
+
+        Raises:
+            ValueError: If ``layers`` is an empty list.
+            IndexError: If any layer is out of range.
+        """
+        if layers is None:
+            default = self.extraction_layers.get(concept)
+            return [self.middle_layer if default is None else default]
+
+        if not layers:
+            raise ValueError("layers must contain at least one layer, or be None")
+
+        return sorted({self._resolve_layer(layer) for layer in layers})
+
+    def _make_injection_hook(
+        self,
+        vector: torch.Tensor,
+        strength: float,
+    ) -> Any:
+        """Build the forward hook that adds a scaled concept vector.
+
+        The hook adds ``strength * vector`` at every sequence position. The
+        vector has shape ``(d_model,)`` and the activation ``(batch, seq,
+        d_model)``, so ordinary broadcasting over the trailing dimension applies
+        the same offset to every token of every sequence in the batch. The
+        vector is cast to the activation's device and dtype on each call, which
+        keeps the hook correct when the model is sharded or running in bfloat16
+        while vectors are cached in float32.
+
+        Args:
+            vector: Concept direction of shape ``(d_model,)``.
+            strength: Coefficient applied to the vector.
+
+        Returns:
+            A callable with the TransformerLens hook signature
+            ``(activation, hook) -> activation``.
+        """
+
+        def injection_hook(activation: torch.Tensor, hook: Any) -> torch.Tensor:
+            offset = vector.to(device=activation.device, dtype=activation.dtype)
+            return activation + strength * offset
+
+        return injection_hook
 
     def inject_vector(
         self,
         concept: str,
         strength: float = 1.0,
         layers: list[int] | None = None,
-    ) -> None:
+    ) -> list[InjectionHandle]:
         """Steer generation by adding a cached concept vector to the residual stream.
 
-        The final implementation registers forward hooks on the requested
-        layers; each hook adds ``strength * self.concept_vectors[concept]`` to
-        the hidden states flowing through that layer. Negative ``strength``
-        values suppress the concept instead of amplifying it. Handles are kept
-        in ``self._active_hooks`` so that they can be removed later.
+        A forward hook is registered on ``blocks.{layer}.hook_resid_post`` for
+        each requested layer. Each hook adds ``strength * concept_vector`` to
+        every position of the activation passing through it. Positive strengths
+        amplify the concept, negative strengths suppress it, and ``0.0``
+        reproduces the unsteered model.
+
+        The hooks stay attached until removed. Prefer :meth:`steering`, which
+        cleans up automatically; call this directly only when the steering has
+        to outlive a single block of code.
 
         Args:
             concept: Name of a concept previously passed to
                 :meth:`extract_vector`.
             strength: Scaling coefficient applied to the concept vector.
             layers: Layers to hook. Defaults to the layer recorded in
-                :attr:`extraction_layers` when omitted.
+                :attr:`extraction_layers`, or the middle layer if unknown.
+
+        Returns:
+            The handles that were attached, also appended to
+            ``self._active_hooks``.
 
         Raises:
             KeyError: If ``concept`` has no cached vector.
-            NotImplementedError: Always, until the injection logic is written.
+            ValueError: If ``layers`` is empty, or the cached vector is not a
+                1-D tensor matching the model's ``d_model``.
+            IndexError: If a requested layer is out of range.
+            RuntimeError: If the model has not been loaded.
         """
         if concept not in self.concept_vectors:
             raise KeyError(
@@ -621,4 +759,131 @@ class CulturalRepE:
                 "Call extract_vector() before inject_vector()."
             )
 
-        raise NotImplementedError("Vector injection is not implemented yet.")
+        model = self._require_model()
+        vector = self.concept_vectors[concept]
+        self._validate_vector(concept, vector)
+        target_layers = self._resolve_injection_layers(concept, layers)
+
+        handles: list[InjectionHandle] = []
+        for layer in target_layers:
+            hook_name = RESID_POST_HOOK.format(layer=layer)
+            hook_point = model.mod_dict[hook_name]
+
+            model.add_hook(hook_name, self._make_injection_hook(vector, strength), dir="fwd")
+
+            # add_hook returns None; TransformerLens appends the handle it
+            # created to the hook point, so the newest entry is ours.
+            handles.append(
+                InjectionHandle(
+                    concept=concept,
+                    layer=layer,
+                    hook_name=hook_name,
+                    strength=strength,
+                    _hook_point=hook_point,
+                    _lens_handle=hook_point.fwd_hooks[-1],
+                )
+            )
+
+        self._active_hooks.extend(handles)
+        logger.info(
+            "Injected %s at strength %.3f into layer(s) %s",
+            concept,
+            strength,
+            ", ".join(str(layer) for layer in target_layers),
+        )
+        return handles
+
+    def _validate_vector(self, concept: str, vector: torch.Tensor) -> None:
+        """Check that a cached vector can be broadcast onto the residual stream.
+
+        Args:
+            concept: Concept the vector belongs to, used in the error message.
+            vector: The cached direction.
+
+        Raises:
+            ValueError: If the vector is not 1-D or its width does not match
+                the model's ``d_model``.
+        """
+        if vector.ndim != 1:
+            raise ValueError(
+                f"Concept vector for {concept!r} must be 1-D of shape (d_model,), "
+                f"got shape {tuple(vector.shape)}"
+            )
+
+        model = self.model
+        d_model = int(model.cfg.d_model) if model is not None else None
+        if d_model is not None and vector.shape[0] != d_model:
+            raise ValueError(
+                f"Concept vector for {concept!r} has width {vector.shape[0]}, but the model's "
+                f"d_model is {d_model}. Re-extract the vector with this model."
+            )
+
+    def remove_hooks(self, handles: list[InjectionHandle] | None = None) -> int:
+        """Detach steering hooks and forget them.
+
+        Args:
+            handles: Specific handles to remove. ``None`` removes every hook
+                this engine has attached, which is the usual cleanup path.
+                Passing a subset lets nested steering scopes unwind
+                independently.
+
+        Returns:
+            How many hooks were actually detached. Zero is a valid, silent
+            outcome: calling this with nothing attached is not an error.
+        """
+        targets = self._active_hooks if handles is None else handles
+
+        removed = 0
+        for handle in list(targets):
+            if handle.is_active:
+                handle.remove()
+                removed += 1
+
+        if handles is None:
+            self._active_hooks.clear()
+        else:
+            requested = {id(handle) for handle in handles}
+            self._active_hooks = [
+                handle for handle in self._active_hooks if id(handle) not in requested
+            ]
+
+        if removed:
+            logger.info("Removed %d steering hook(s)", removed)
+        return removed
+
+    @contextmanager
+    def steering(
+        self,
+        concept: str,
+        strength: float = 1.0,
+        layers: list[int] | None = None,
+    ) -> Iterator[list[InjectionHandle]]:
+        """Steer the model for the duration of a ``with`` block.
+
+        This is the recommended way to inject: the hooks are removed on exit
+        whether the body returns normally or raises, so a failed generation
+        cannot leave a model silently steered for the rest of the session. Only
+        the hooks this scope added are removed, so nested scopes and any
+        unrelated hooks the caller attached are left intact.
+
+        Args:
+            concept: Name of a concept previously passed to
+                :meth:`extract_vector`.
+            strength: Scaling coefficient applied to the concept vector.
+            layers: Layers to hook. Defaults to the extraction layer.
+
+        Yields:
+            The handles attached for this scope.
+
+        Raises:
+            KeyError: If ``concept`` has no cached vector.
+
+        Example:
+            >>> with engine.steering("diyafa_001", strength=2.0):  # doctest: +SKIP
+            ...     steered = engine.model.generate("A guest arrives", max_new_tokens=20)
+        """
+        handles = self.inject_vector(concept=concept, strength=strength, layers=layers)
+        try:
+            yield handles
+        finally:
+            self.remove_hooks(handles)
