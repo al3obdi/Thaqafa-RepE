@@ -31,12 +31,18 @@ tqdm = ">=4.66.0"
 [tool.poetry.group.dev.dependencies]
 pytest = ">=8.0.0"
 pytest-cov = ">=5.0.0"
-black = ">=24.0.0"
-isort = ">=5.13.0"
-ruff = ">=0.4.0"
-mypy = ">=1.10.0"
 pre-commit = ">=3.7.0"
 nbstripout = ">=0.7.1"
+
+# Formatters, linters and the type checker are pinned exactly, and the same
+# versions are pinned again in .pre-commit-config.yaml. A range here means a
+# new release can change the required formatting or add a rule and turn CI red
+# with no change to the code - which is exactly what happened when black
+# floated from 24.x to 26.5.1. Bump these deliberately, in both files at once.
+black = "26.5.1"
+isort = "8.0.1"
+ruff = "0.16.3"
+mypy = "2.3.1"
 
 [build-system]
 requires = ["poetry-core>=1.9.0"]

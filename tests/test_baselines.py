@@ -286,9 +286,7 @@ class TestCompareSteeringVsPrompting:
         model = SteerableFakeModel()
         engine = make_steerable_engine(model)
 
-        compare_steering_vs_prompting(
-            engine, "diyafa", CONCEPT_NAME, PROMPTS, measure_effect=True
-        )
+        compare_steering_vs_prompting(engine, "diyafa", CONCEPT_NAME, PROMPTS, measure_effect=True)
 
         assert engine.active_hook_names == []
         assert all(not point.fwd_hooks for point in model.mod_dict.values())

@@ -273,7 +273,10 @@ class TestHookBroadcasting:
         model = engine.model
         assert model is not None
         handle = engine.inject_vector("diyafa", strength=strength, layers=[0])[0]
-        return model.mod_dict[handle.hook_name].fwd_hooks[-1].user_hook  # type: ignore[union-attr]
+        # mod_dict entries have no usable static type; see the note in
+        # CulturalRepE.inject_vector.
+        hook_point: Any = model.mod_dict[handle.hook_name]
+        return hook_point.fwd_hooks[-1].user_hook
 
     def test_one_dimensional_vector_broadcasts_over_batch_and_sequence(self) -> None:
         engine = make_engine()
