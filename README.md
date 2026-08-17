@@ -43,8 +43,12 @@ that other under-represented cultures can adapt, not a single benchmark score.
 
 - **Bilingual concept dataset** — every concept carries Arabic and English
   names, examples, and a note on the cultural context it belongs to.
-- **Concept vector extraction** — read activations at any layer and derive a
-  reading vector per concept (`CulturalRepE.extract_vector`).
+- **Contrastive concept vector extraction** — read residual stream activations
+  at any layer and derive a unit-norm direction per concept via the
+  mean-difference recipe (`CulturalRepE.extract_vector`).
+- **Generated neutral baselines** — a deterministic bilingual bank of everyday
+  sentences stands in as the negative side of the contrast until curated
+  minimal pairs exist (`src.data.contrastive`).
 - **Steered generation** — inject a concept vector at a chosen strength and set
   of layers, with negative strengths for suppression
   (`CulturalRepE.inject_vector`).
@@ -53,9 +57,24 @@ that other under-represented cultures can adapt, not a single benchmark score.
 - **Research-grade tooling** — Poetry-pinned dependencies, pre-commit hooks,
   type hints throughout, and CI running ruff, black and pytest.
 
-> **Status: scaffolding.** The extraction and injection algorithms are typed,
-> documented stubs that raise `NotImplementedError`. The data layer, plotting
-> utilities and CLI wiring around them are functional.
+> **Status: extraction implemented.** Model loading, activation collection and
+> contrastive vector extraction are working and tested on CPU. Injection
+> (`inject_vector`) is still a typed stub — that is Phase 3.
+
+### How extraction works
+
+```text
+v = mean(resid_post[layer] | concept prompts) - mean(resid_post[layer] | neutral prompts)
+v = v / ||v||₂
+```
+
+Subtracting a neutral baseline is what makes the direction concept-specific:
+without it the mean is dominated by components shared by every sentence, and
+all concepts point roughly the same way. Padding positions are masked out of
+the average, each prompt is averaged over its own real tokens before prompts
+are averaged together, and the sum is accumulated in float32 even when the
+model runs in bfloat16. Extraction defaults to the middle layer, where semantic
+features tend to be most linearly separable.
 
 ## Installation
 
@@ -111,14 +130,29 @@ engine = CulturalRepE(
 )
 engine.load_model()
 
+# Examples are loaded from the dataset by concept_id, the layer defaults to the
+# middle of the stack, and the neutral baseline is generated automatically.
+vector = engine.extract_vector("diyafa_001")
+
+# Or supply everything explicitly:
 vector = engine.extract_vector(
     concept="diyafa_001",
     examples=["أكرم ضيافته لمدة ثلاثة أيام", "He hosted him generously for three days"],
-    layer=-1,
+    contrast_examples=["الطقس جميل اليوم.", "The weather is nice today."],
+    layer=14,
 )
+
+# Every concept in the dataset at once, then persisted to disk
+engine.extract_all_vectors()
+engine.save_vectors("outputs/vectors/concept_vectors.pt")
 ```
 
+Pass the Hugging Face token for gated models through `HF_TOKEN` in your `.env`
+(`hf_token=os.environ["HF_TOKEN"]`) — never inline it in code or notebooks.
+
 ### Steer generation
+
+Phase 3, not yet implemented:
 
 ```python
 # Amplify the concept
@@ -131,7 +165,12 @@ engine.inject_vector(concept="diyafa_001", strength=-1.5)
 ### Command line
 
 ```bash
-poetry run python scripts/extract_vectors.py --layer -1 --output outputs/vectors
+# Every concept at the middle layer
+poetry run python scripts/extract_vectors.py --output outputs/vectors
+
+# One concept at an explicit layer
+poetry run python scripts/extract_vectors.py --concept diyafa_001 --layer 14
+
 poetry run python scripts/inject_concepts.py --concept diyafa_001 --strength 1.5 \
     --prompt "What should I do when a guest arrives unannounced?"
 poetry run python scripts/evaluate.py --concept diyafa_001 --min -2 --max 2 --steps 9
@@ -152,6 +191,7 @@ Thaqafa-RepE/
 │   └── evaluate.py
 ├── src/
 │   ├── data/dataset_builder.py    # CulturalConcept dataclass and loaders
+│   ├── data/contrastive.py        # Neutral baseline prompts (AR + EN)
 │   ├── models/rep_engine.py       # CulturalRepE: extraction and injection
 │   └── utils/visualization.py     # Layer sweeps, similarity heatmaps
 ├── data/
@@ -190,8 +230,9 @@ Each line of `data/datasets/cultural_concepts.jsonl` is one JSON object:
 - [x] **Phase 0 — Scaffolding.** Repository structure, tooling, CI, dataset schema.
 - [ ] **Phase 1 — Data collection.** Expand to 100+ concepts with contrastive
       examples, reviewed by native speakers across dialect regions.
-- [ ] **Phase 2 — Vector extraction.** Implement activation reading, layer
-      sweeps and linear probes; report where concepts become separable.
+- [x] **Phase 2 — Vector extraction.** Contrastive mean-difference extraction
+      with masked activation collection and L2 normalisation. Linear probes and
+      a reported layer sweep are still open.
 - [ ] **Phase 3 — Concept injection.** Implement steering hooks and measure the
       strength/coherence trade-off.
 - [ ] **Phase 4 — Evaluation.** Human evaluation of cultural grounding, plus

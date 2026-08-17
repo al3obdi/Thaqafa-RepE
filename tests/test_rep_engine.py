@@ -1,8 +1,9 @@
-"""Unit tests for :mod:`src.models.rep_engine`.
+"""Unit tests for the :class:`~src.models.rep_engine.CulturalRepE` contract.
 
-The extraction and injection algorithms are still stubs, so these tests pin
-down the parts of the contract that already exist: construction, the concept
-vector cache, and input validation.
+These tests cover construction, the concept vector cache and input validation -
+everything that holds regardless of whether a model is loaded. The extraction
+pipeline itself is covered by ``test_rep_engine_extraction.py``; injection is
+still a Phase 3 stub.
 """
 
 from __future__ import annotations
@@ -83,11 +84,10 @@ class TestInvalidConceptHandling:
         with pytest.raises(ValueError, match="example"):
             engine.extract_vector("diyafa", examples=[])
 
-    def test_unimplemented_methods_raise(self) -> None:
+    def test_injection_is_still_unimplemented(self) -> None:
+        # Phase 3 work. Extraction is covered by test_rep_engine_extraction.py.
         engine = CulturalRepE(model_name="test/model", device="cpu")
+        engine.concept_vectors["diyafa"] = torch.ones(4)
 
         with pytest.raises(NotImplementedError):
-            engine.load_model()
-
-        with pytest.raises(NotImplementedError):
-            engine.extract_vector("diyafa", examples=["أكرم ضيافته"])
+            engine.inject_vector("diyafa")
