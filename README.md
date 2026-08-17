@@ -50,16 +50,20 @@ that other under-represented cultures can adapt, not a single benchmark score.
   sentences stands in as the negative side of the contrast until curated
   minimal pairs exist (`src.data.contrastive`).
 - **Steered generation** — inject a concept vector at a chosen strength and set
-  of layers, with negative strengths for suppression
-  (`CulturalRepE.inject_vector`).
-- **Evaluation harness** — sweep injection strength and plot the effect on
-  alignment metrics.
+  of layers via TransformerLens forward hooks, with negative strengths for
+  suppression (`CulturalRepE.inject_vector`).
+- **Scoped steering** — a `steering()` context manager that removes exactly the
+  hooks it added, even when the body raises, so a failed generation cannot leave
+  the model silently steered.
+- **Evaluation harness** — sweep injection strength and measure both what the
+  model generates and how much fluency it loses (`src.utils.evaluation`).
 - **Research-grade tooling** — Poetry-pinned dependencies, pre-commit hooks,
   type hints throughout, and CI running ruff, black and pytest.
 
-> **Status: extraction implemented.** Model loading, activation collection and
-> contrastive vector extraction are working and tested on CPU. Injection
-> (`inject_vector`) is still a typed stub — that is Phase 3.
+> **Status: extraction and injection implemented.** Model loading, activation
+> collection, contrastive extraction, hook-based injection and the steering
+> context manager all work and are tested on CPU. What remains is evaluation at
+> scale: linear probes, layer sweeps and human rating of cultural grounding.
 
 ### How extraction works
 
@@ -75,6 +79,27 @@ the average, each prompt is averaged over its own real tokens before prompts
 are averaged together, and the sum is accumulated in float32 even when the
 model runs in bfloat16. Extraction defaults to the middle layer, where semantic
 features tend to be most linearly separable.
+
+### How steering works
+
+Injection is the mirror image of extraction. A forward hook on the same residual
+stream point writes to it instead of reading from it:
+
+```text
+resid_post[layer] ← resid_post[layer] + strength · v
+```
+
+Because `v` is a unit direction, `strength` is measured in residual stream norms:
+positive amplifies, negative suppresses, and `0.0` reproduces the unsteered model
+exactly — which makes zero a fair baseline measured through the same code path,
+not a separate branch. The offset lands on every sequence position, so the whole
+context is nudged rather than only the final token.
+
+Hooks mutate the model until they are removed, and a forgotten hook silently
+steers everything that follows it. `steering()` therefore removes exactly the
+hooks it added — leaving nested scopes and any caching or ablation hooks you
+attached yourself intact — and does so in a `finally`, so an exception mid-
+generation cannot leak a live hook.
 
 ## Installation
 
@@ -152,15 +177,51 @@ Pass the Hugging Face token for gated models through `HF_TOKEN` in your `.env`
 
 ### Steer generation
 
-Phase 3, not yet implemented:
+Use the context manager — it cleans up after itself:
 
 ```python
-# Amplify the concept
-engine.inject_vector(concept="diyafa_001", strength=1.5, layers=[12, 14, 16])
+# Amplify the concept for the duration of the block
+with engine.steering("diyafa_001", strength=1.5, layers=[12, 14, 16]):
+    steered = engine.model.generate("A guest arrives unannounced.", max_new_tokens=64)
 
-# Suppress it
-engine.inject_vector(concept="diyafa_001", strength=-1.5)
+# Suppress it instead
+with engine.steering("diyafa_001", strength=-1.5):
+    suppressed = engine.model.generate("A guest arrives unannounced.", max_new_tokens=64)
+
+# Hooks are gone here, whether or not the blocks raised
+assert engine.active_hook_names == []
 ```
+
+When the steering has to outlive a block of code, drive the hooks manually:
+
+```python
+handles = engine.inject_vector("diyafa_001", strength=1.5)
+...
+engine.remove_hooks(handles)   # or remove_hooks() to detach everything
+```
+
+### Measure the strength/fluency trade-off
+
+```python
+from src.utils.evaluation import evaluate_steering, summarize_sweep
+
+results = evaluate_steering(
+    engine,
+    "diyafa_001",
+    prompts=["What should I do when a guest arrives unannounced?"],
+    strengths=[-2.0, -1.0, 0.0, 1.0, 2.0],
+)
+
+for strength, result in results.items():
+    print(strength, result.perplexity, result.generations)
+```
+
+Each point reports the generated text *and* the model's cross-entropy on the
+prompts. The second number is the guardrail: it is measured on text the steering
+did not produce, so a sharp rise means the injection is damaging language
+modelling rather than merely changing the topic. Plot it with
+`plot_steering_sweep(**summarize_sweep(results))` to find the knee — the usable
+steering range — instead of hand-picking one coefficient.
 
 ### Command line
 
@@ -171,7 +232,9 @@ poetry run python scripts/extract_vectors.py --output outputs/vectors
 # One concept at an explicit layer
 poetry run python scripts/extract_vectors.py --concept diyafa_001 --layer 14
 
+# Generate the same prompt unsteered and steered, side by side
 poetry run python scripts/inject_concepts.py --concept diyafa_001 --strength 1.5 \
+    --vectors outputs/vectors/concept_vectors.pt \
     --prompt "What should I do when a guest arrives unannounced?"
 poetry run python scripts/evaluate.py --concept diyafa_001 --min -2 --max 2 --steps 9
 ```
@@ -193,6 +256,7 @@ Thaqafa-RepE/
 │   ├── data/dataset_builder.py    # CulturalConcept dataclass and loaders
 │   ├── data/contrastive.py        # Neutral baseline prompts (AR + EN)
 │   ├── models/rep_engine.py       # CulturalRepE: extraction and injection
+│   ├── utils/evaluation.py        # Strength sweeps, fluency guardrail
 │   └── utils/visualization.py     # Layer sweeps, similarity heatmaps
 ├── data/
 │   ├── raw/                       # Untracked source material
@@ -233,8 +297,9 @@ Each line of `data/datasets/cultural_concepts.jsonl` is one JSON object:
 - [x] **Phase 2 — Vector extraction.** Contrastive mean-difference extraction
       with masked activation collection and L2 normalisation. Linear probes and
       a reported layer sweep are still open.
-- [ ] **Phase 3 — Concept injection.** Implement steering hooks and measure the
-      strength/coherence trade-off.
+- [x] **Phase 3 — Concept injection.** Hook-based injection with correct
+      broadcasting, a scoped `steering()` context manager, and a strength sweep
+      that reports generations alongside a fluency guardrail.
 - [ ] **Phase 4 — Evaluation.** Human evaluation of cultural grounding, plus
       automatic checks for factuality and fluency regressions.
 - [ ] **Phase 5 — Publication.** Release the dataset, vectors and paper.
