@@ -1,10 +1,11 @@
 ---
 title: Thaqafa-RepE Vector Extraction
-emoji: 🧠
+emoji: "🧠"
 colorFrom: blue
 colorTo: green
 sdk: gradio
-sdk_version: "4.44.0"
+sdk_version: "6.20.0"
+python_version: "3.12"
 app_file: app.py
 pinned: false
 license: mit
@@ -24,11 +25,9 @@ vectors from large language models using Representation Engineering (RepE).
 
 This Space is part of a **hybrid Zero-GPU strategy**:
 
-| Component | Where | Purpose |
-|-----------|-------|---------|
-| Development & Testing | Local (CPU) | Code development, unit tests, lightweight evaluation |
-| Vector Extraction | **This Space** (ZeroGPU A10G) | Heavy GPU extraction from Llama-3-8B or Jais-13B |
-| Vector Storage | [HF Dataset](https://huggingface.co/datasets/al3obdi/thaqafa-repe-vectors) | Private dataset for extracted vectors |
+- **Development & Testing** — Local (CPU): Code development, unit tests, lightweight evaluation.
+- **Vector Extraction** — **This Space** (ZeroGPU A10G): Heavy GPU extraction from Llama-3-8B or Jais-13B.
+- **Vector Storage** — [HF Dataset](https://huggingface.co/datasets/al3obdi/thaqafa-repe-vectors): Private dataset for extracted vectors.
 
 ## How It Works
 
@@ -44,8 +43,7 @@ This Space is part of a **hybrid Zero-GPU strategy**:
 ## Integration with Main Repository
 
 The main repository ([Thaqafa-RepE](https://github.com/al3obdi/Thaqafa-RepE))
-provides the `CulturalRepE` engine and `hf_integration` utilities. This Space
-imports them directly via `sys.path` manipulation.
+provides the ``CulturalRepE`` engine and ``hf_integration`` utilities.
 
 After extraction, load vectors locally:
 
@@ -57,9 +55,15 @@ vectors = load_vectors_from_hf("al3obdi/thaqafa-repe-vectors")
 
 ## Setup
 
-1. Set `HF_TOKEN` as a Space secret (Settings → Repository secrets)
-2. Set hardware to ZeroGPU (`zero-a10g`) in Settings → Hardware
+1. Set ``HF_TOKEN`` as a Space secret (Settings → Repository secrets)
+2. Set hardware to ZeroGPU (``zero-a10g``) in Settings → Hardware
 3. The Space will build automatically
+
+## Notes
+
+- Uses Gradio SDK 6.20.0 with Python 3.12 for ZeroGPU compatibility.
+- The ``@spaces.GPU`` decorator ensures dynamic GPU allocation.
+- A keepalive loop prevents the process from exiting on the HF Spaces infrastructure.
 
 ## License
 

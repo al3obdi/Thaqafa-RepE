@@ -1,4 +1,4 @@
-"""Gradio interface for Zero-GPU vector extraction on Hugging Face Spaces.
+"""Thaqafa-RepE Zero-GPU Vector Extraction Space.
 
 This Space runs on ZeroGPU (A10G) when hardware is set to ``zero-a10g``.
 It provides a web UI for extracting cultural concept vectors using the
@@ -13,13 +13,17 @@ from __future__ import annotations
 
 import json
 import os
-import sys
+import time
 import traceback
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+os.environ["GRADIO_SERVER_NAME"] = "0.0.0.0"
+os.environ["GRADIO_SERVER_PORT"] = "7860"
+
 import gradio as gr
+import spaces  # HF ZeroGPU SDK
 import torch
 
 # ---------------------------------------------------------------------------
@@ -35,36 +39,38 @@ MODEL_CHOICES = [
     "core42/jais-13b-chat",
 ]
 
+
 # ---------------------------------------------------------------------------
-# Lazy imports for heavy dependencies (only needed at extraction time)
+# Helpers
 # ---------------------------------------------------------------------------
 
 
-def _get_engine(model_name: str) -> Any:
-    """Build a CulturalRepE engine for the given model.
+def _resolve_token(token: str | None = None) -> str:
+    """Resolve HF token from argument or environment.
 
     Args:
-        model_name: Hugging Face model identifier.
+        token: Optional token. Falls back to ``HF_TOKEN`` env var.
 
     Returns:
-        A configured :class:`CulturalRepE` instance.
+        The resolved token string.
+
+    Raises:
+        ValueError: If no token is available.
     """
-    # Add the Space's root to sys.path so ``src`` is importable
-    space_root = Path(__file__).resolve().parent
-    if str(space_root) not in sys.path:
-        sys.path.insert(0, str(space_root))
+    t = token or os.environ.get("HF_TOKEN")
+    if not t:
+        raise ValueError("No HF_TOKEN set. Add it as a Space secret.")
+    return t
 
-    from src.models.rep_engine import CulturalRepE
 
-    hf_token = os.environ.get("HF_TOKEN")
-    engine = CulturalRepE(
-        model_name=model_name,
-        device="cuda",
-        dtype="bfloat16",
-        hf_token=hf_token,
-    )
-    engine.load_model()
-    return engine
+def _tensor_to_list(tensor: torch.Tensor) -> list[float]:
+    """Convert a tensor to a plain list of floats."""
+    return tensor.detach().cpu().to(torch.float32).tolist()
+
+
+def _list_to_tensor(values: list[float]) -> torch.Tensor:
+    """Convert a list of floats back to a tensor."""
+    return torch.tensor(values, dtype=torch.float32)
 
 
 def _save_to_hf(
@@ -84,14 +90,44 @@ def _save_to_hf(
     Returns:
         Dataset URL.
     """
-    from src.utils.hf_integration import save_vectors_to_hf
+    from datasets import Dataset
 
-    metadata = {
-        "model_name": model_name,
-        "extraction_layers": extraction_layers,
-        "extraction_timestamp": datetime.now(timezone.utc).isoformat(),
-    }
-    return save_vectors_to_hf(vectors, dataset_name=dataset_name, metadata=metadata)
+    token = _resolve_token()
+    rows = []
+    ts = datetime.now(timezone.utc).isoformat()
+    for cid, vec in vectors.items():
+        rows.append(
+            {
+                "concept_id": cid,
+                "concept_ar": "",
+                "concept_en": "",
+                "vector": _tensor_to_list(vec),
+                "extraction_layer": extraction_layers.get(cid, -1),
+                "model_name": model_name,
+                "extraction_timestamp": ts,
+            }
+        )
+    ds = Dataset.from_list(rows)
+    ds.push_to_hub(dataset_name, token=token, private=True)
+    return f"https://huggingface.co/datasets/{dataset_name}"
+
+
+def _load_from_hf(dataset_name: str) -> dict[str, torch.Tensor]:
+    """Load vectors from a HF Dataset.
+
+    Args:
+        dataset_name: HF dataset repo to read.
+
+    Returns:
+        Dict mapping concept_id to tensor.
+    """
+    from datasets import load_dataset
+
+    token = _resolve_token()
+    ds = load_dataset(dataset_name, token=token)
+    split = list(ds.keys())[0] if hasattr(ds, "keys") else "train"
+    rows = [dict(r) for r in ds[split]]
+    return {r["concept_id"]: _list_to_tensor(r["vector"]) for r in rows}
 
 
 # ---------------------------------------------------------------------------
@@ -99,6 +135,7 @@ def _save_to_hf(
 # ---------------------------------------------------------------------------
 
 
+@spaces.GPU
 def extract_vectors(
     concept_ids: str,
     model_name: str,
@@ -128,30 +165,50 @@ def extract_vectors(
 
     progress(0.1, desc="Loading model...")
     try:
-        engine = _get_engine(model_name)
+        from transformer_lens import HookedTransformer
+
+        hf_token = os.environ.get("HF_TOKEN")
+        kwargs = {"token": hf_token} if hf_token else {}
+        model = HookedTransformer.from_pretrained(
+            model_name,
+            device="cuda",
+            dtype=torch.bfloat16,
+            **kwargs,
+        )
+        model.eval()
     except Exception as exc:
-        return f"❌ Failed to load model: {exc}\n\n{traceback.format_exc()}"
+        return f"❌ Model load failed: {exc}\n{traceback.format_exc()}"
+
+    n_layers = int(model.cfg.n_layers)
+    layer = n_layers // 2
+    hook = f"blocks.{layer}.hook_resid_post"
 
     progress(0.3, desc="Extracting vectors...")
     results: dict[str, torch.Tensor] = {}
-    for i, concept_id in enumerate(ids):
-        progress(0.3 + 0.5 * (i + 1) / len(ids), desc=f"Extracting {concept_id}...")
+    layers_out: dict[str, int] = {}
+    for i, cid in enumerate(ids):
+        progress(0.3 + 0.5 * (i + 1) / len(ids), desc=f"Extracting {cid}...")
         try:
-            vec = engine.extract_vector(concept_id)
-            results[concept_id] = vec
+            with torch.no_grad():
+                tokens = model.to_tokens([f"Concept: {cid}"])
+                _, cache = model.run_with_cache(
+                    tokens,
+                    names_filter=hook,
+                    stop_at_layer=layer + 1,
+                    return_type=None,
+                )
+                vec = cache[hook][0].mean(dim=0).to(torch.float32).cpu()
+                vec = vec / vec.norm()
+            results[cid] = vec
+            layers_out[cid] = layer
         except Exception as exc:
-            return f"❌ Extraction failed for {concept_id}: {exc}"
+            return f"❌ Extraction failed for {cid}: {exc}"
 
     progress(0.85, desc="Saving to HF Dataset...")
     try:
-        url = _save_to_hf(
-            results,
-            model_name,
-            engine.extraction_layers,
-            dataset_name,
-        )
+        url = _save_to_hf(results, model_name, layers_out, dataset_name)
     except Exception as exc:
-        return f"❌ Failed to push to HF: {exc}\n\nVectors extracted but not uploaded."
+        return f"❌ Push failed: {exc}\n\nVectors extracted but not uploaded."
 
     progress(1.0, desc="Done!")
     return (
@@ -170,19 +227,16 @@ def preview_results(dataset_name: str) -> str:
     Returns:
         JSON string of the dataset contents.
     """
-    from src.utils.hf_integration import load_vectors_from_hf
-
     try:
-        vectors = load_vectors_from_hf(dataset_name=dataset_name)
+        vectors = _load_from_hf(dataset_name)
     except Exception as exc:
         return json.dumps({"error": str(exc)}, indent=2)
 
     preview: dict[str, Any] = {}
-    for concept_id, vec in list(vectors.items())[:5]:
-        preview[concept_id] = {
+    for cid, vec in list(vectors.items())[:5]:
+        preview[cid] = {
             "shape": list(vec.shape),
-            "norm": float(torch.linalg.vector_norm(vec).item()),
-            "first_5": vec[:5].tolist(),
+            "norm": float(vec.norm().item()),
         }
     return json.dumps(preview, indent=2, ensure_ascii=False)
 
@@ -196,17 +250,13 @@ def download_json(dataset_name: str) -> str:
     Returns:
         Path to the downloaded JSON file.
     """
-    from src.utils.hf_integration import load_vectors_from_hf
-
-    vectors = load_vectors_from_hf(dataset_name=dataset_name)
+    vectors = _load_from_hf(dataset_name)
     output: dict[str, Any] = {}
-    for concept_id, vec in vectors.items():
-        output[concept_id] = {
+    for cid, vec in vectors.items():
+        output[cid] = {
             "vector": vec.tolist(),
             "shape": list(vec.shape),
-            "norm": float(torch.linalg.vector_norm(vec).item()),
         }
-
     out_path = "/tmp/thaqafa_vectors.json"
     Path(out_path).write_text(json.dumps(output, indent=2, ensure_ascii=False))
     return out_path
@@ -221,8 +271,6 @@ def push_to_hf(dataset_name: str) -> str:
     Returns:
         Status message.
     """
-    # In the Space context, extraction already pushes. This is a
-    # convenience button for re-syncing.
     return f"ℹ️ Vectors are pushed automatically after extraction.\nDataset: {dataset_name}"
 
 
@@ -230,15 +278,15 @@ def push_to_hf(dataset_name: str) -> str:
 # Build the Gradio interface
 # ---------------------------------------------------------------------------
 
-with gr.Blocks(title="Thaqafa-RepE Vector Extraction") as demo:
-    gr.Markdown(
-        """
+demo = gr.Blocks(title="Thaqafa-RepE Vector Extraction")
+
+with demo:
+    gr.Markdown("""
         # 🧠 Thaqafa-RepE — Zero-GPU Vector Extraction
 
         Extract cultural concept vectors from LLMs using Representation Engineering.
         Results are pushed to a private Hugging Face Dataset.
-        """
-    )
+        """)
 
     with gr.Tab("Extract Vectors"):
         with gr.Row():
@@ -292,5 +340,9 @@ with gr.Blocks(title="Thaqafa-RepE Vector Extraction") as demo:
         outputs=push_output,
     )
 
-if __name__ == "__main__":
-    demo.launch()
+demo.queue(default_concurrency_limit=1)
+demo.launch()
+
+# Keepalive loop — prevents the process from exiting on HF Spaces infrastructure
+while True:
+    time.sleep(3600)
