@@ -65,6 +65,15 @@ wandb/
 *.ckpt
 *.onnx
 
+# Keep paper result CSVs and Markdown tracked for reproducibility
+!outputs/paper_results/
+!outputs/paper_results/*.csv
+!outputs/paper_results/*.md
+# But not large or regeneratable files
+outputs/paper_results/vectors.json
+outputs/paper_results/figures/*.png
+outputs/paper_results/generations/
+
 # ---------------------------------------------------------------------------
 # Environment and secrets (the example template stays tracked)
 # ---------------------------------------------------------------------------

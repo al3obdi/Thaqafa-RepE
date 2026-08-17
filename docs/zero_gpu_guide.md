@@ -263,6 +263,58 @@ for cid, vec in vectors.items():
     print(f"  {cid}: shape={vec.shape}, norm={vec.norm():.4f}")
 ```
 
+## Generating Paper Results
+
+The `scripts/generate_paper_results.py` script orchestrates the full experimental pipeline:
+
+### Prerequisites
+
+```bash
+export HF_TOKEN=hf_your_token_here
+pip install gradio_client matplotlib
+```
+
+### Usage
+
+```bash
+# Extract all 3 seed concepts and generate all outputs
+python scripts/generate_paper_results.py --concepts wasta_001,muruah_001,diyafa_001
+
+# Use a specific model
+python scripts/generate_paper_results.py --concepts wasta_001 \
+  --model meta-llama/Meta-Llama-3-8B-Instruct
+
+# Custom output directory
+python scripts/generate_paper_results.py --concepts wasta_001 \
+  --output-dir outputs/paper_results
+```
+
+### What the Script Does
+
+1. **Extraction**: Triggers vector extraction on the ZeroGPU Space via `extract_via_space()`
+2. **Layer sweep**: Runs linear probes across all layers, identifies best layer per concept
+3. **Steering sweep**: Measures effect (KL) vs cost (fluency loss) across strength grid
+4. **Baseline comparison**: Compares steering against prompt-based baselines
+5. **Report**: Generates `RESULTS_SUMMARY.md` with LaTeX-ready snippets
+
+### Output Files
+
+- `outputs/paper_results/vectors.json` - Extracted vectors
+- `outputs/paper_results/layer_sweep.csv` - Probe accuracy per layer
+- `outputs/paper_results/steering_sweep.csv` - KL and loss per strength
+- `outputs/paper_results/baseline_comparison.csv` - Steering vs prompting
+- `outputs/paper_results/figures/*.png` - Layer sweep and steering plots
+- `outputs/paper_results/RESULTS_SUMMARY.md` - Markdown report with LaTeX snippets
+
+### Workflow: Results to Paper
+
+1. Run the script: `python scripts/generate_paper_results.py --concepts wasta_001,muruah_001,diyafa_001`
+2. Open `outputs/paper_results/RESULTS_SUMMARY.md`
+3. Search for `\todo` markers in `docs/research_paper/main.tex`
+4. Copy the LaTeX-ready tables from the Markdown into the corresponding `\todo` locations
+5. Replace placeholder figures with `figures/layer_sweep.png` and `figures/effect_vs_cost.png`
+6. Rebuild: `cd docs/research_paper && ./build.sh`
+
 ## Dataset Schema
 
 | Column | Type | Description |

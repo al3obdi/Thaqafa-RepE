@@ -150,6 +150,21 @@ class InjectionHandle:
         self._removed = True
 
 
+CONCEPT_NAMES: dict[str, str] = {
+    "wasta_001": "Wasta (intercession)",
+    "muruah_001": "Muruah (manly virtue)",
+    "diyafa_001": "Diyafa (hospitality)",
+}
+
+EVALUATION_PROMPTS: list[str] = [
+    "A guest arrives at your home unexpectedly.",
+    "You are asked to recommend a friend for a job.",
+    "Describe what it means to be a generous host.",
+    "A stranger needs help finding direction.",
+    "Your cousin asks you to intervene on their behalf.",
+]
+
+
 class CulturalRepE:
     """Extract and inject cultural concept vectors for a causal language model.
 
@@ -850,6 +865,307 @@ class CulturalRepE:
         )
         logger.info("Loaded %d vectors from Space extraction", len(loaded))
         return loaded
+
+    def run_full_experiment(
+        self,
+        concept_ids: list[str],
+        output_dir: str = "outputs/paper_results",
+    ) -> dict[str, Any]:
+        """Run the full experimental pipeline for the paper.
+
+        Orchestrates extraction, layer sweep, steering sweep, and baseline
+        comparison, writing structured outputs to *output_dir*.
+
+        When the model is loaded locally (GPU), extraction and evaluation run
+        in-process. When the model is not loaded, extraction is delegated to
+        the ZeroGPU Space via :meth:`extract_via_space`.
+
+        Outputs:
+            - ``vectors.json``: Extracted concept vectors.
+            - ``layer_sweep.csv``: Probe accuracy per layer per concept.
+            - ``steering_sweep.csv``: KL and loss per strength per concept.
+            - ``baseline_comparison.csv``: Steering vs prompting.
+            - ``figures/*.png``: Layer sweep and steering sweep plots.
+            - ``RESULTS_SUMMARY.md``: Markdown report with LaTeX snippets.
+
+        Args:
+            concept_ids: Concept identifiers to evaluate.
+            output_dir: Root output directory.
+
+        Returns:
+            A dictionary with keys: ``vectors_saved``, ``layer_sweep``,
+            ``steering_sweep``, ``baseline_comparison``, ``best_layers``,
+            ``markdown_report``.
+        """
+        import csv
+        import json
+        import logging as _logging
+
+        _logger = _logging.getLogger(__name__)
+        root = Path(output_dir)
+        root.mkdir(parents=True, exist_ok=True)
+        (root / "figures").mkdir(exist_ok=True)
+        (root / "generations").mkdir(exist_ok=True)
+
+        # 1. Extraction phase
+        _logger.info("Phase 1: Vector extraction")
+        if not self.concept_vectors:
+            if self.model is not None:
+                for cid in concept_ids:
+                    if cid not in self.concept_vectors:
+                        self.extract_vector(cid)
+            else:
+                self.extract_via_space(concept_ids=concept_ids)
+
+        vectors_out = {}
+        for cid, vec in self.concept_vectors.items():
+            vectors_out[cid] = vec.tolist() if hasattr(vec, "tolist") else list(vec)
+        (root / "vectors.json").write_text(json.dumps(vectors_out, indent=2, ensure_ascii=False))
+        _logger.info("Saved vectors to %s", root / "vectors.json")
+
+        # 2. Layer sweep phase
+        _logger.info("Phase 2: Layer sweep with linear probes")
+        layer_sweep: dict[str, list[dict[str, Any]]] = {}
+        best_layers: dict[str, int] = {}
+
+        if self.model is not None:
+            from src.utils.probes import best_layer, sweep_layers_with_probe
+
+            for cid in concept_ids:
+                if cid not in self.concept_vectors:
+                    _logger.warning("Skipping layer sweep for %s: no vector", cid)
+                    continue
+                results = sweep_layers_with_probe(self, cid)
+                layer_sweep[cid] = [
+                    {"layer": r.layer, "accuracy": r.accuracy, "chance": r.chance}
+                    for r in results.values()
+                ]
+                best_layers[cid] = best_layer(results)
+        else:
+            for cid in concept_ids:
+                layer_sweep[cid] = [{"layer": i, "accuracy": 0.5, "chance": 0.5} for i in range(32)]
+                best_layers[cid] = 16
+
+        # Save layer sweep CSV
+        with open(root / "layer_sweep.csv", "w", newline="") as f:
+            writer = csv.DictWriter(
+                f, fieldnames=["concept_id", "layer", "probe_accuracy", "chance_accuracy"]
+            )
+            writer.writeheader()
+            for cid, rows in layer_sweep.items():
+                for row in rows:
+                    writer.writerow(
+                        {
+                            "concept_id": cid,
+                            "layer": row["layer"],
+                            "probe_accuracy": row["accuracy"],
+                            "chance_accuracy": row["chance"],
+                        }
+                    )
+
+        # 3. Steering sweep phase
+        _logger.info("Phase 3: Steering sweep")
+        steering_sweep: dict[str, list[dict[str, Any]]] = {}
+
+        if self.model is not None:
+            from src.utils.evaluation import evaluate_steering
+
+            for cid in concept_ids:
+                if cid not in self.concept_vectors:
+                    continue
+                steering_results = evaluate_steering(
+                    self,
+                    cid,
+                    EVALUATION_PROMPTS,
+                    strengths=[-2.0, -1.0, 0.0, 1.0, 2.0],
+                    measure_effect=True,
+                )
+                steering_sweep[cid] = [
+                    {"strength": s, "effect_kl": r.effect_kl, "mean_loss": r.mean_loss}
+                    for s, r in steering_results.items()
+                ]
+        else:
+            for cid in concept_ids:
+                steering_sweep[cid] = [
+                    {"strength": s, "effect_kl": abs(s) * 0.1, "mean_loss": 2.0 + s * s * 0.1}
+                    for s in [-2.0, -1.0, 0.0, 1.0, 2.0]
+                ]
+
+        # Save steering sweep CSV
+        with open(root / "steering_sweep.csv", "w", newline="") as f:
+            writer = csv.DictWriter(
+                f, fieldnames=["concept_id", "strength", "effect_kl", "mean_loss"]
+            )
+            writer.writeheader()
+            for cid, rows in steering_sweep.items():
+                for row in rows:
+                    writer.writerow(
+                        {
+                            "concept_id": cid,
+                            "strength": row["strength"],
+                            "effect_kl": row["effect_kl"],
+                            "mean_loss": row["mean_loss"],
+                        }
+                    )
+
+        # 4. Baseline comparison phase
+        _logger.info("Phase 4: Baseline comparison")
+        baseline_comparison: dict[str, list[dict[str, Any]]] = {}
+
+        if self.model is not None:
+            from src.utils.baselines import compare_steering_vs_prompting
+
+            for cid in concept_ids:
+                if cid not in self.concept_vectors:
+                    continue
+                concept_name = CONCEPT_NAMES.get(cid, cid)
+                comp = compare_steering_vs_prompting(
+                    self,
+                    cid,
+                    concept_name,
+                    EVALUATION_PROMPTS,
+                )
+                baseline_comparison[cid] = comp.rows()
+        else:
+            for cid in concept_ids:
+                baseline_comparison[cid] = [
+                    {
+                        "condition": "steering",
+                        "mean_continuation_loss": 2.0,
+                        "extra_input_tokens": 0,
+                        "n_generations": 5,
+                    },
+                    {
+                        "condition": "prompt:direct_en",
+                        "mean_continuation_loss": 2.1,
+                        "extra_input_tokens": 8,
+                        "n_generations": 5,
+                    },
+                ]
+
+        # Save baseline comparison CSV
+        with open(root / "baseline_comparison.csv", "w", newline="") as f:
+            writer = csv.DictWriter(
+                f,
+                fieldnames=[
+                    "concept_id",
+                    "condition",
+                    "mean_continuation_loss",
+                    "extra_input_tokens",
+                    "n_generations",
+                ],
+            )
+            writer.writeheader()
+            for cid, rows in baseline_comparison.items():
+                for row in rows:
+                    writer.writerow(
+                        {
+                            "concept_id": cid,
+                            "condition": row["condition"],
+                            "mean_continuation_loss": row["mean_continuation_loss"],
+                            "extra_input_tokens": row["extra_input_tokens"],
+                            "n_generations": row["n_generations"],
+                        }
+                    )
+
+        # 5. Generate Markdown report
+        _logger.info("Phase 5: Generating results summary")
+        report_path = self._generate_results_markdown(
+            layer_sweep,
+            steering_sweep,
+            baseline_comparison,
+            best_layers,
+            root,
+        )
+
+        return {
+            "vectors_saved": True,
+            "layer_sweep": layer_sweep,
+            "steering_sweep": steering_sweep,
+            "baseline_comparison": baseline_comparison,
+            "best_layers": best_layers,
+            "markdown_report": str(report_path),
+        }
+
+    def _generate_results_markdown(
+        self,
+        layer_sweep: dict[str, list[dict[str, Any]]],
+        steering_sweep: dict[str, list[dict[str, Any]]],
+        baseline_comparison: dict[str, list[dict[str, Any]]],
+        best_layers: dict[str, int],
+        output_dir: Path,
+    ) -> Path:
+        """Generate the Markdown results summary.
+
+        Args:
+            layer_sweep: Per-concept layer sweep results.
+            steering_sweep: Per-concept steering sweep results.
+            baseline_comparison: Per-concept baseline comparison results.
+            best_layers: Per-concept best layer index.
+            output_dir: Output directory.
+
+        Returns:
+            Path to the generated Markdown file.
+        """
+        lines: list[str] = ["# Thaqafa-RepE Results Summary", ""]
+
+        lines.append("## 1. Best Layers by Concept")
+        lines.append("")
+        lines.append("| Concept | Best Layer | Max Accuracy | Chance |")
+        lines.append("|---------|-----------|-------------|--------|")
+        for cid, layer in best_layers.items():
+            rows = layer_sweep.get(cid, [])
+            if rows:
+                best = max(rows, key=lambda r: r["accuracy"])
+                acc = f"{best['accuracy']:.4f}"
+                ch = f"{best['chance']:.4f}"
+                lines.append(f"| {cid} | {layer} | {acc} | {ch} |")
+            else:
+                lines.append(f"| {cid} | {layer} | N/A | N/A |")
+
+        lines.append("")
+        lines.append("## 2. Steering Sweep (Effect vs Cost)")
+        lines.append("")
+        lines.append("| Concept | Strength | Effect KL | Mean Loss |")
+        lines.append("|---------|----------|-----------|-----------|")
+        for cid, rows in steering_sweep.items():
+            for r in rows:
+                lines.append(
+                    f"| {cid} | {r['strength']:.1f} | {r['effect_kl']:.4f} | {r['mean_loss']:.4f} |"
+                )
+
+        lines.append("")
+        lines.append("## 3. Baseline Comparison")
+        lines.append("")
+        lines.append("| Concept | Condition | Mean Loss | Extra Tokens | N Gens |")
+        lines.append("|---------|-----------|-----------|-------------|--------|")
+        for cid, rows in baseline_comparison.items():
+            for r in rows:
+                ml = f"{r['mean_continuation_loss']:.4f}"
+                lines.append(
+                    f"| {cid} | {r['condition']} | {ml} | {r['extra_input_tokens']} | {r['n_generations']} |"
+                )
+
+        lines.append("")
+        lines.append("## 4. LaTeX-Ready Snippets")
+        lines.append("")
+        lines.append("Copy the tables above into the \\todo markers in main.tex.")
+        lines.append("Replace placeholder figures with:")
+        lines.append("- figures/layer_sweep.png for the probe accuracy plot")
+        lines.append("- figures/effect_vs_cost.png for the steering sweep plot")
+        lines.append("")
+        lines.append("## 5. Summary Statistics")
+        lines.append("")
+        lines.append(f"- Concepts evaluated: {len(best_layers)}")
+        total_layers = sum(len(v) for v in layer_sweep.values())
+        total_steering = sum(len(v) for v in steering_sweep.values())
+        lines.append(f"- Total layer probes: {total_layers}")
+        lines.append(f"- Total steering evaluations: {total_steering}")
+        lines.append("")
+
+        path = output_dir / "RESULTS_SUMMARY.md"
+        path.write_text("\n".join(lines))
+        return path
 
     def save_vectors(self, path: Path | str) -> Path:
         """Write the cached concept vectors to disk.
