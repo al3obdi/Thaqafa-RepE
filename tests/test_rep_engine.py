@@ -84,10 +84,13 @@ class TestInvalidConceptHandling:
         with pytest.raises(ValueError, match="example"):
             engine.extract_vector("diyafa", examples=[])
 
-    def test_injection_is_still_unimplemented(self) -> None:
-        # Phase 3 work. Extraction is covered by test_rep_engine_extraction.py.
+    def test_injection_validates_the_concept_before_touching_the_model(self) -> None:
+        # An unknown concept must be reported without loading any weights, so
+        # a typo fails instantly rather than after a long download.
         engine = CulturalRepE(model_name="test/model", device="cpu")
-        engine.concept_vectors["diyafa"] = torch.ones(4)
 
-        with pytest.raises(NotImplementedError):
+        with pytest.raises(KeyError, match="No vector stored"):
             engine.inject_vector("diyafa")
+
+        assert engine.model is None
+        assert engine.active_hook_names == []

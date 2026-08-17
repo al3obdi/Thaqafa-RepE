@@ -23,11 +23,7 @@ from typing import Any
 import pytest
 import torch
 
-from src.models.rep_engine import (
-    RESID_POST_HOOK,
-    CulturalRepE,
-    resolve_dtype,
-)
+from src.models.rep_engine import RESID_POST_HOOK, CulturalRepE, resolve_dtype
 
 TINY_TOKENIZER_NAME = "sshleifer/tiny-gpt2"
 DATASET_PATH = Path(__file__).resolve().parents[1] / "data" / "datasets" / "cultural_concepts.jsonl"
