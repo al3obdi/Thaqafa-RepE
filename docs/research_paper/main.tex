@@ -82,29 +82,50 @@ down, and whether steering beats the persona prompting baseline.}
 \section{Introduction}
 \label{sec:introduction}
 
-\todo{Write the full introduction. Structure and the claims to make:}
+Alignment research has largely been written in English, by and for a narrow
+slice of the world. When a language model reasons about
+\arabterm{wasta}{influence through personal connections},
+\arabterm{muru'ah}{moral integrity and noble character}, or the obligations of
+\arabterm{diyafa}{Arab hospitality}, it tends to fall back on translated
+approximations that flatten each concept into its nearest Western analogue
+and lose the social weight that makes the original meaningful
+\citep{naous2024having}. This is not a translation error but a representation
+problem: the model has not failed to look up a word, it has failed to encode
+the cultural structure behind it.
 
+Representation engineering \citep{zou2023representation} offers a way past this
+barrier. Instead of asking whether a model \emph{says} the right thing under
+the right prompt, it reads the residual stream directly to ask whether the
+concept is \emph{represented} as a direction in activation space, and whether
+injecting that direction can steer the model's output without retraining. This
+separates what the model knows from what it is willing to produce --- two
+things that prompt-based evaluation inevitably confounds.
+
+We ask three questions. \textbf{Legibility:} are Arab cultural concepts
+linearly represented in the residual stream of open-weight models?
+\textbf{Locality:} at which layers, and is the representation shared between
+Arabic and English descriptions of the same concept? \textbf{Controllability:}
+can injecting a concept direction make answers more culturally grounded
+without degrading fluency or factuality?
+
+Our contributions are:
 \begin{itemize}
-  \item \textbf{The gap.} Alignment work is overwhelmingly anglophone. Models
-        are evaluated on values benchmarks written in English and grounded in
-        Western moral intuitions. Concepts central to other cultures are
-        handled, if at all, through translation.
-  \item \textbf{Why translation is not enough.} \arabterm{wasta}{} is not
-        simply "nepotism": it is contested, situationally legitimate, and
-        bound up with kinship obligation. A model that maps it onto
-        "corruption" has not understood it; it has replaced it. Cite empirical
-        evidence of this flattening \citep{naous2024having}.
-  \item \textbf{Why representation engineering.} Behavioural probing through
-        prompts confounds what a model \emph{represents} with what it is
-        willing to \emph{say}. Reading the residual stream directly separates
-        the two \citep{zou2023representation}.
-  \item \textbf{Research questions.} Legibility: are these concepts linearly
-        represented? Locality: at which layers, and is the representation
-        shared between Arabic and English descriptions? Controllability: can
-        injecting a concept direction make answers more culturally grounded
-        without degrading fluency or factuality?
-  \item \textbf{Contributions.} Enumerate the four listed in the abstract, with
-        a pointer to the released code and dataset.
+  \item \textbf{A bilingual concept dataset} of Arab cultural concepts with
+        Arabic and English exemplars, cultural context annotations, and
+        sentiment labels that explicitly mark contested concepts as
+        \texttt{mixed} rather than forcing them into positive or negative
+        bins (\S\ref{sec:setup}).
+  \item \textbf{Contrastive vector extraction} over the residual stream with
+        a generated neutral baseline that isolates concept-specific directions
+        from generic sentence structure (\S\ref{sec:extraction}).
+  \item \textbf{Hook-based steering} with a scoped context manager that
+        guarantees the model returns to its unmodified state after every
+        measurement, making every reported number reproducible
+        (\S\ref{sec:steering}).
+  \item \textbf{A dual-metric evaluation protocol} that reports steering
+        effect (KL divergence) and fluency cost (cross-entropy) jointly, and
+        compares representation steering against prompt-engineering baselines
+        under the same unmodified model scorer (\S\ref{sec:baselines}).
 \end{itemize}
 
 %--------------------------------------------------------------------------
