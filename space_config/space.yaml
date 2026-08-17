@@ -1,0 +1,32 @@
+# Space configuration for Thaqafa-RepE ZeroGPU extraction
+# This file documents the Space setup — the actual Space is managed
+# through the Hugging Face web UI and API.
+
+space_name: "al3obdi/thaqafa-repe-extraction"
+sdk: gradio
+sdk_version: "4.44.0"
+hardware: zero-a10g  # ZeroGPU (A10G) — requires HF PRO
+python_version: "3.10"
+
+# Environment variables (set as Space secrets, NOT in this file)
+secrets:
+  - HF_TOKEN
+
+# Files to deploy
+files:
+  - app.py
+  - requirements.txt
+  - README.md
+
+# Dataset for storing extracted vectors
+dataset:
+  name: "al3obdi/thaqafa-repe-vectors"
+  private: true
+  schema:
+    - concept_id: string
+    - concept_ar: string
+    - concept_en: string
+    - vector: list_float32
+    - extraction_layer: int
+    - model_name: string
+    - extraction_timestamp: string

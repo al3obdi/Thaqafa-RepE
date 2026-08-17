@@ -1,4 +1,4 @@
-"""Shared helpers: probes, baselines, evaluation, plotting."""
+"""Shared helpers: probes, baselines, evaluation, plotting, HF integration."""
 
 from src.utils.baselines import (
     INSTRUCTION_TEMPLATES,
@@ -21,6 +21,16 @@ from src.utils.evaluation import (
     summarize_layer_sets,
     summarize_sweep,
 )
+from src.utils.hf_integration import (
+    DEFAULT_DATASET,
+    DEFAULT_SPACE,
+    HFIntegrationError,
+    MissingTokenError,
+    load_vectors_from_hf,
+    save_vectors_to_hf,
+    sync_with_space,
+    validate_dataset_schema,
+)
 from src.utils.probes import (
     LinearProbe,
     ProbeResult,
@@ -33,12 +43,16 @@ from src.utils.probes import (
 from src.utils.visualization import plot_concept_similarity, plot_layer_scores, plot_steering_sweep
 
 __all__ = [
+    "DEFAULT_DATASET",
+    "DEFAULT_SPACE",
     "DEFAULT_STRENGTHS",
+    "HFIntegrationError",
     "INSTRUCTION_TEMPLATES",
     "ComparisonResult",
     "ConditionResult",
     "InstructionTemplate",
     "LinearProbe",
+    "MissingTokenError",
     "ProbeResult",
     "SteeringResult",
     "best_layer",
@@ -51,13 +65,17 @@ __all__ = [
     "generate_steered",
     "generate_steering_condition",
     "get_template",
+    "load_vectors_from_hf",
     "measure_steering_effect",
     "plot_concept_similarity",
     "plot_layer_scores",
     "plot_steering_sweep",
     "probe_layer",
+    "save_vectors_to_hf",
     "summarize_layer_sets",
     "summarize_probe_sweep",
     "summarize_sweep",
     "sweep_layers_with_probe",
+    "sync_with_space",
+    "validate_dataset_schema",
 ]

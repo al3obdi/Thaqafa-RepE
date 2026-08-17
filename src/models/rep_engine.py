@@ -652,6 +652,102 @@ class CulturalRepE:
                 logger.warning("Skipping concept %s: %s", entry.concept_id, exc)
         return vectors
 
+    def save_vectors_to_hf(
+        self,
+        dataset_name: str = "al3obdi/thaqafa-repe-vectors",
+        token: str | None = None,
+    ) -> str:
+        """Save all extracted concept vectors to a Hugging Face Dataset.
+
+        Delegates to :func:`src.utils.hf_integration.save_vectors_to_hf`, passing
+        the engine's cached vectors, extraction layers, and model name
+        as metadata. The token is resolved from the environment when not
+        provided.
+
+        Args:
+            dataset_name: Target HF dataset repository.
+            token: Hugging Face access token. Defaults to ``HF_TOKEN``.
+
+        Returns:
+            The URL of the updated dataset.
+
+        Raises:
+            ValueError: If no vectors have been extracted yet.
+            MissingTokenError: If no token is available.
+            HFIntegrationError: If the upload fails.
+        """
+        if not self.concept_vectors:
+            raise ValueError("No concept vectors to save. Call extract_vector() first.")
+
+        from src.utils.hf_integration import save_vectors_to_hf as _save
+
+        metadata = {
+            "model_name": self.model_name,
+            "extraction_layers": dict(self.extraction_layers),
+        }
+        return _save(
+            self.concept_vectors,
+            dataset_name=dataset_name,
+            metadata=metadata,
+            token=token,
+        )
+
+    def load_vectors_from_hf(
+        self,
+        dataset_name: str = "al3obdi/thaqafa-repe-vectors",
+        concept_ids: list[str] | None = None,
+        token: str | None = None,
+    ) -> dict[str, torch.Tensor]:
+        """Load vectors from a Hugging Face Dataset into :attr:`concept_vectors`.
+
+        Delegates to :func:`src.utils.hf_integration.load_vectors_from_hf`. Loaded
+        vectors are merged into the engine's cache — existing entries with
+        the same key are overwritten.
+
+        Args:
+            dataset_name: Source HF dataset repository.
+            concept_ids: Optional list of concept IDs to load. ``None``
+                loads everything.
+            token: Hugging Face access token. Defaults to ``HF_TOKEN``.
+
+        Returns:
+            The loaded mapping (also stored in :attr:`concept_vectors`).
+
+        Raises:
+            MissingTokenError: If no token is available.
+            HFIntegrationError: If the download fails.
+        """
+        from src.utils.hf_integration import load_vectors_from_hf as _load
+
+        loaded = _load(dataset_name=dataset_name, concept_ids=concept_ids, token=token)
+        self.concept_vectors.update(loaded)
+        logger.info("Loaded %d vectors from HF into engine cache", len(loaded))
+        return loaded
+
+    def sync_with_space(
+        self,
+        space_name: str = "al3obdi/thaqafa-repe-extraction",
+        token: str | None = None,
+    ) -> dict[str, Any]:
+        """Check the ZeroGPU extraction Space status and sync results.
+
+        Delegates to :func:`src.utils.hf_integration.sync_with_space`.
+
+        Args:
+            space_name: HF Space repository.
+            token: Hugging Face access token. Defaults to ``HF_TOKEN``.
+
+        Returns:
+            A dictionary with Space status information.
+
+        Raises:
+            MissingTokenError: If no token is available.
+            HFIntegrationError: If the API request fails.
+        """
+        from src.utils.hf_integration import sync_with_space as _sync
+
+        return _sync(space_name=space_name, token=token)
+
     def save_vectors(self, path: Path | str) -> Path:
         """Write the cached concept vectors to disk.
 
