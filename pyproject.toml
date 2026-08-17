@@ -1,0 +1,78 @@
+[tool.poetry]
+name = "thaqafa-repe"
+version = "0.1.0"
+description = "Representation Engineering for Arab Cultural Concepts in Large Language Models"
+authors = ["Thaqafa-RepE Contributors <noreply@example.com>"]
+license = "MIT"
+readme = "README.md"
+homepage = "https://github.com/al3obdi/Thaqafa-RepE"
+repository = "https://github.com/al3obdi/Thaqafa-RepE"
+keywords = ["representation-engineering", "interpretability", "cultural-alignment", "arabic", "nlp"]
+packages = [{ include = "src" }]
+
+[tool.poetry.dependencies]
+python = ">=3.10,<3.13"
+torch = ">=2.0.0"
+transformers = ">=4.40.0"
+transformer-lens = ">=2.0.0"
+datasets = ">=2.19.0"
+accelerate = ">=0.30.0"
+numpy = ">=1.26.0"
+pandas = ">=2.2.0"
+scikit-learn = ">=1.4.0"
+matplotlib = ">=3.8.0"
+seaborn = ">=0.13.0"
+plotly = ">=5.20.0"
+jupyter = ">=1.0.0"
+ipykernel = ">=6.29.0"
+python-dotenv = ">=1.0.0"
+tqdm = ">=4.66.0"
+
+[tool.poetry.group.dev.dependencies]
+pytest = ">=8.0.0"
+pytest-cov = ">=5.0.0"
+black = ">=24.0.0"
+isort = ">=5.13.0"
+ruff = ">=0.4.0"
+mypy = ">=1.10.0"
+pre-commit = ">=3.7.0"
+nbstripout = ">=0.7.1"
+
+[build-system]
+requires = ["poetry-core>=1.9.0"]
+build-backend = "poetry.core.masonry.api"
+
+[tool.black]
+line-length = 100
+target-version = ["py310"]
+
+[tool.isort]
+profile = "black"
+line_length = 100
+known_first_party = ["src"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+exclude = ["notebooks", ".venv"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP", "N", "W"]
+ignore = ["E501"]
+
+[tool.mypy]
+python_version = "3.10"
+warn_unused_configs = true
+warn_redundant_casts = true
+disallow_untyped_defs = true
+ignore_missing_imports = true
+files = ["src", "scripts", "tests"]
+
+[[tool.mypy.overrides]]
+module = "tests.*"
+disallow_untyped_defs = false
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+addopts = "-ra --strict-markers"
