@@ -748,6 +748,109 @@ class CulturalRepE:
 
         return _sync(space_name=space_name, token=token)
 
+    def extract_via_space(
+        self,
+        concept_ids: list[str],
+        model_name: str = "meta-llama/Meta-Llama-3-8B-Instruct",
+        space_name: str = "al3obdi/thaqafa-repe-extraction",
+        dataset_name: str = "al3obdi/thaqafa-repe-vectors",
+        token: str | None = None,
+    ) -> dict[str, torch.Tensor]:
+        """Trigger extraction on the ZeroGPU Space and load results locally.
+
+        This is the high-level automation entry point. It:
+
+        1. Connects to the HF ZeroGPU Space via ``gradio_client``.
+        2. Submits an extraction job for the given concepts and model.
+        3. Polls until the job completes.
+        4. Loads the resulting vectors from the HF Dataset into
+           :attr:`concept_vectors`.
+
+        The local machine never loads the model - all GPU work happens on
+        the Space. This method is safe to call from a CPU-only environment.
+
+        Args:
+            concept_ids: Concept identifiers to extract, e.g.
+                ``["wasta_001", "diyafa_001"]``.
+            model_name: Hugging Face model identifier to extract from.
+            space_name: HF Space repository to connect to.
+            dataset_name: HF dataset to load results from after extraction.
+            token: Hugging Face access token. Defaults to ``HF_TOKEN``.
+
+        Returns:
+            The loaded vectors, also merged into :attr:`concept_vectors`.
+
+        Raises:
+            ImportError: If ``gradio_client`` is not installed.
+            RuntimeError: If the Space is unreachable or the job fails.
+            MissingTokenError: If no token is available.
+        """
+        import time
+
+        from src.utils.hf_integration import _resolve_token
+
+        resolved_token = _resolve_token(token)
+
+        try:
+            from gradio_client import Client
+        except ImportError as exc:
+            raise ImportError(
+                "gradio_client is required for Space automation. "
+                "Install it with: pip install gradio_client"
+            ) from exc
+
+        space_url = f"https://{space_name.replace(chr(47), chr(45))}.hf.space"
+        logger.info("Connecting to Space: %s", space_url)
+
+        try:
+            client = Client(space_url, hf_token=resolved_token)
+        except Exception as exc:
+            raise RuntimeError(
+                f"Failed to connect to Space {space_name!r}: {exc}. "
+                "The Space may be sleeping or in an error state."
+            ) from exc
+
+        concept_str = ", ".join(concept_ids)
+        logger.info("Submitting extraction job: concepts=%s, model=%s", concept_str, model_name)
+
+        try:
+            job = client.submit(
+                fn_index=0,
+                inputs=[concept_str, model_name, dataset_name],
+            )
+        except Exception as exc:
+            raise RuntimeError(f"Failed to submit extraction job: {exc}") from exc
+
+        # Poll for completion
+        max_wait = 600
+        poll_interval = 5
+        elapsed = 0
+        while elapsed < max_wait:
+            status = job.status()
+            code = getattr(status, "code", None)
+            if code == "SUCCESS":
+                logger.info("Space extraction completed: %s", job.result())
+                break
+            if code == "ERROR":
+                raise RuntimeError(f"Space extraction job failed: {status}")
+            logger.debug("Waiting for Space job... (%ds, status=%s)", elapsed, code)
+            time.sleep(poll_interval)
+            elapsed += poll_interval
+        else:
+            raise RuntimeError(
+                f"Space extraction timed out after {max_wait}s. "
+                "The Space may be cold-starting or the model is too large."
+            )
+
+        # Load results from HF Dataset
+        loaded = self.load_vectors_from_hf(
+            dataset_name=dataset_name,
+            concept_ids=concept_ids,
+            token=resolved_token,
+        )
+        logger.info("Loaded %d vectors from Space extraction", len(loaded))
+        return loaded
+
     def save_vectors(self, path: Path | str) -> Path:
         """Write the cached concept vectors to disk.
 

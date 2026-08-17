@@ -188,6 +188,81 @@ for k, v in vectors.items():
     vectors[k] = v.to(torch.bfloat16)
 ```
 
+## Automated Extraction from the Command Line
+
+The `scripts/run_space_extraction.py` script automates the entire flow:
+connect to the Space, submit an extraction job, wait for completion,
+and pull the results back locally.
+
+### Prerequisites
+
+```bash
+# Set your HF token
+export HF_TOKEN=hf_your_token_here
+
+# Install gradio_client (included in project dependencies)
+pip install gradio_client
+```
+
+### Usage
+
+```bash
+# Extract specific concepts
+python scripts/run_space_extraction.py --concepts wasta_001,diyafa_001
+
+# Use a different model
+python scripts/run_space_extraction.py --concepts muruah_001 \
+  --model allam-ai/ALLaM-1-7b-Instruct
+
+# Custom dataset and space
+python scripts/run_space_extraction.py --concepts wasta_001 \
+  --dataset al3obdi/thaqafa-repe-vectors \
+  --space al3obdi/thaqafa-repe-extraction
+```
+
+### What the Script Does
+
+1. Resolves `HF_TOKEN` from the environment
+2. Connects to the ZeroGPU Space via `gradio_client.Client`
+3. Submits an extraction job (concept IDs + model name)
+4. Polls every 5 seconds until the job completes (max 10 minutes)
+5. Loads the extracted vectors from the HF Dataset
+6. Prints a summary of loaded vectors (concept ID, shape, norm)
+
+### Using `extract_via_space()` in Python
+
+For programmatic access, use the `CulturalRepE.extract_via_space()` method:
+
+```python
+from src.models.rep_engine import CulturalRepE
+
+engine = CulturalRepE(model_name="meta-llama/Meta-Llama-3-8B-Instruct")
+
+# Trigger extraction on the Space and load results into engine.concept_vectors
+vectors = engine.extract_via_space(
+    concept_ids=["wasta_001", "diyafa_001", "muruah_001"],
+)
+
+# Now use the vectors for steering
+with engine.steering("diyafa_001", strength=2.0):
+    output = engine.model.generate("A guest arrives at your home", max_new_tokens=50)
+```
+
+### Using in a Jupyter Notebook
+
+```python
+import os
+os.environ["HF_TOKEN"] = "hf_your_token_here"
+
+from src.models.rep_engine import CulturalRepE
+
+engine = CulturalRepE()
+vectors = engine.extract_via_space(concept_ids=["wasta_001"])
+print(f"Loaded {len(vectors)} vectors")
+for cid, vec in vectors.items():
+    print(f"  {cid}: shape={vec.shape}, norm={vec.norm():.4f}")
+```
+
 ## Dataset Schema
 
 | Column | Type | Description |
