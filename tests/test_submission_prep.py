@@ -32,8 +32,7 @@ ANON_SCRIPT = SCRIPTS_DIR / "anonymize_paper.sh"
 @pytest.fixture
 def sample_results_md(tmp_path: Path) -> Path:
     """Create a sample RESULTS_SUMMARY.md for injection tests."""
-    md = dedent(
-        """
+    md = dedent("""
         # Thaqafa-RepE Results Summary
 
         ## 1. Best Layers by Concept
@@ -60,8 +59,7 @@ def sample_results_md(tmp_path: Path) -> Path:
         |---------|-----------|-----------|-------------|--------|
         | wasta_001 | steering | 2.0500 | 0 | 5 |
         | wasta_001 | prompt:direct_en | 2.1000 | 8 | 5 |
-    """
-    ).strip()
+    """).strip()
     path = tmp_path / "RESULTS_SUMMARY.md"
     path.write_text(md)
     return path
