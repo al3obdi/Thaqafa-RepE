@@ -795,7 +795,10 @@ class CulturalRepE:
         handles: list[InjectionHandle] = []
         for layer in target_layers:
             hook_name = RESID_POST_HOOK.format(layer=layer)
-            hook_point = model.mod_dict[hook_name]
+            # nn.Module.__getattr__ is typed as returning Tensor | Module, so a
+            # HookPoint reached through mod_dict has no usable static type. The
+            # explicit Any keeps that unavoidable looseness in one place.
+            hook_point: Any = model.mod_dict[hook_name]
 
             model.add_hook(hook_name, self._make_injection_hook(vector, strength), dir="fwd")
 

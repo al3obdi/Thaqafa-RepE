@@ -118,8 +118,7 @@ NEUTRAL = InstructionTemplate(
 )
 
 INSTRUCTION_TEMPLATES: dict[str, InstructionTemplate] = {
-    template.name: template
-    for template in (DIRECT_EN, REFLECT_EN, PERSONA_EN, DIRECT_AR, NEUTRAL)
+    template.name: template for template in (DIRECT_EN, REFLECT_EN, PERSONA_EN, DIRECT_AR, NEUTRAL)
 }
 
 DEFAULT_TEMPLATE = DIRECT_EN

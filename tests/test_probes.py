@@ -284,9 +284,7 @@ class TestBestLayer:
     """Choosing a layer from a sweep."""
 
     def _result(self, layer: int, accuracy: float) -> ProbeResult:
-        return ProbeResult(
-            layer=layer, accuracy=accuracy, std=0.0, chance=0.5, n_samples=10
-        )
+        return ProbeResult(layer=layer, accuracy=accuracy, std=0.0, chance=0.5, n_samples=10)
 
     def test_picks_the_highest_accuracy(self) -> None:
         results = {0: self._result(0, 0.6), 1: self._result(1, 0.9), 2: self._result(2, 0.7)}

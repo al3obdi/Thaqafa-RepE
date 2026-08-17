@@ -293,9 +293,7 @@ class LinearProbe:
             training_score = self.fit(features, targets).score(features, targets)
             return training_score, 0.0, [training_score]
 
-        splitter = StratifiedKFold(
-            n_splits=effective_splits, shuffle=True, random_state=self.seed
-        )
+        splitter = StratifiedKFold(n_splits=effective_splits, shuffle=True, random_state=self.seed)
         scores = cross_val_score(self._build_pipeline(), features, targets, cv=splitter)
         fold_scores = [float(score) for score in scores]
         return float(np.mean(fold_scores)), float(np.std(fold_scores)), fold_scores
