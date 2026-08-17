@@ -404,30 +404,33 @@ class CulturalRepE:
 
         return mask
 
-    def _compute_mean_activation(
+    def collect_activations(
         self,
         prompts: list[str],
         layer: int,
     ) -> torch.Tensor:
-        """Return the mean residual stream activation of ``prompts`` at ``layer``.
+        """Return one residual stream vector per prompt, read at ``layer``.
 
         Each prompt is run through the model and the ``hook_resid_post``
-        activations of ``layer`` are collected. Padding positions are excluded
-        via an attention mask, so a short prompt in a batch of long ones is not
-        diluted by pad tokens. The per-prompt mean over real tokens is computed
-        first, then averaged across prompts, so that every prompt contributes
-        equally regardless of its length.
+        activations of ``layer`` are collected, then averaged over that prompt's
+        real tokens. Padding positions are excluded via an attention mask, so a
+        short prompt batched with long ones is not diluted by pad tokens.
 
         Activations are accumulated in float32 even when the model runs in
         bfloat16, because summing hundreds of low-precision values loses more
         signal than the cast costs.
 
+        This is the per-prompt view that linear probes need.
+        :meth:`_compute_mean_activation` reduces it to a single direction.
+
         Args:
             prompts: Texts to run through the model.
-            layer: Non-negative index of the transformer block to read from.
+            layer: Index of the transformer block to read from. Negative
+                indices count from the end of the stack.
 
         Returns:
-            A 1-D tensor of shape ``(d_model,)`` on the CPU, in float32.
+            A tensor of shape ``(len(prompts), d_model)`` on the CPU, in
+            float32, in the order the prompts were given.
 
         Raises:
             ValueError: If ``prompts`` is empty.
@@ -467,8 +470,33 @@ class CulturalRepE:
 
                 del cache
 
-        stacked = torch.cat(per_prompt_means, dim=0)
-        return stacked.mean(dim=0)
+        return torch.cat(per_prompt_means, dim=0)
+
+    def _compute_mean_activation(
+        self,
+        prompts: list[str],
+        layer: int,
+    ) -> torch.Tensor:
+        """Return the mean residual stream activation of ``prompts`` at ``layer``.
+
+        Every prompt contributes equally regardless of its length: each is
+        averaged over its own real tokens first (see
+        :meth:`collect_activations`), and those per-prompt vectors are then
+        averaged together.
+
+        Args:
+            prompts: Texts to run through the model.
+            layer: Index of the transformer block to read from.
+
+        Returns:
+            A 1-D tensor of shape ``(d_model,)`` on the CPU, in float32.
+
+        Raises:
+            ValueError: If ``prompts`` is empty.
+            IndexError: If ``layer`` is out of range.
+            RuntimeError: If the model has not been loaded.
+        """
+        return self.collect_activations(prompts, layer).mean(dim=0)
 
     # ------------------------------------------------------------------
     # Concept vectors
