@@ -1,0 +1,422 @@
+% Thaqafa-RepE: Representation Engineering for Arab Cultural Concepts
+%
+% Paper scaffold. Every section carries an outline of what belongs in it and,
+% where relevant, the exact claim the corresponding code already supports.
+% Placeholder numbers are written as \todo{...} so they are impossible to
+% mistake for results. Search for "\todo" before submitting anything.
+%
+% Style: this uses only base LaTeX packages so that it compiles anywhere,
+% including CI, without downloading a conference style file. To switch to the
+% official ACL template, drop acl.sty / acl_natbib.bst into this directory and
+% replace the preamble below with \documentclass[11pt]{article} +
+% \usepackage[review]{acl}. Section structure and citations carry over
+% unchanged. See README.md in this directory.
+
+\documentclass[11pt,a4paper]{article}
+
+\usepackage[utf8]{inputenc}
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{booktabs}
+\usepackage{graphicx}
+\usepackage{natbib}
+\usepackage{url}
+% Deliberately omitted: fontenc/lmodern/microtype. They improve typography but
+% need texlive-fonts-recommended, and this scaffold is meant to compile on a
+% bare texlive-latex-base install. The ACL and NeurIPS style files pull in
+% their own font setup, so switching to either supersedes this choice.
+\usepackage[hidelinks]{hyperref}
+\usepackage[margin=1in]{geometry}
+\usepackage{xcolor}
+
+% Author notes. Renders in draft mode, silent in final mode:
+% \renewcommand{\todo}[1]{}
+\newcommand{\todo}[1]{\textcolor{red}{[TODO: #1]}}
+
+% Arabic terms are transliterated in the body text. Rendering Arabic script
+% properly needs XeLaTeX or LuaLaTeX with a suitable font (see build.sh --xe);
+% under pdflatex the transliteration is what appears.
+\newcommand{\arabterm}[2]{\emph{#1} (#2)}
+
+\title{Thaqafa-RepE: Representation Engineering for Arab Cultural Concepts
+       in Large Language Models}
+
+\author{
+  Thaqafa-RepE Contributors \\
+  \texttt{https://github.com/al3obdi/Thaqafa-RepE}
+}
+
+\date{\today}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+Alignment research has largely been written in English, by and for a narrow
+slice of the world. When a language model reasons about
+\arabterm{wasta}{influence through personal connections},
+\arabterm{muru'ah}{moral integrity and noble character}, or the obligations of
+\arabterm{diyafa}{Arab hospitality}, it tends to fall back on translated
+approximations that flatten each concept into its nearest Western analogue and
+lose the social weight that makes the original meaningful.
+
+We present Thaqafa-RepE, a reproducible toolkit for studying whether Arab
+cultural concepts are linearly represented inside open-weight language models,
+and whether those representations can be steered. We contribute (i) a bilingual
+dataset of Arab cultural concepts with Arabic and English exemplars and
+cultural context annotations; (ii) an implementation of contrastive
+mean-difference vector extraction over the residual stream, with a generated
+neutral baseline that isolates concept-specific directions from generic
+sentence structure; (iii) a hook-based steering mechanism with a scoped context
+manager that guarantees the model returns to its unmodified state; and (iv) an
+evaluation protocol that reports steering \emph{effect} and fluency \emph{cost}
+jointly, and compares representation steering against prompt-engineering
+baselines.
+
+\todo{Fill in headline findings once experiments are run: which layers carry
+each concept, at what strength steering becomes effective, where fluency breaks
+down, and whether steering beats the persona prompting baseline.}
+\end{abstract}
+
+%--------------------------------------------------------------------------
+\section{Introduction}
+\label{sec:introduction}
+
+\todo{Write the full introduction. Structure and the claims to make:}
+
+\begin{itemize}
+  \item \textbf{The gap.} Alignment work is overwhelmingly anglophone. Models
+        are evaluated on values benchmarks written in English and grounded in
+        Western moral intuitions. Concepts central to other cultures are
+        handled, if at all, through translation.
+  \item \textbf{Why translation is not enough.} \arabterm{wasta}{} is not
+        simply "nepotism": it is contested, situationally legitimate, and
+        bound up with kinship obligation. A model that maps it onto
+        "corruption" has not understood it; it has replaced it. Cite empirical
+        evidence of this flattening \citep{naous2024having}.
+  \item \textbf{Why representation engineering.} Behavioural probing through
+        prompts confounds what a model \emph{represents} with what it is
+        willing to \emph{say}. Reading the residual stream directly separates
+        the two \citep{zou2023representation}.
+  \item \textbf{Research questions.} Legibility: are these concepts linearly
+        represented? Locality: at which layers, and is the representation
+        shared between Arabic and English descriptions? Controllability: can
+        injecting a concept direction make answers more culturally grounded
+        without degrading fluency or factuality?
+  \item \textbf{Contributions.} Enumerate the four listed in the abstract, with
+        a pointer to the released code and dataset.
+\end{itemize}
+
+%--------------------------------------------------------------------------
+\section{Related Work}
+\label{sec:related}
+
+\subsection{Representation Engineering and Activation Steering}
+\todo{Position this work against the RepE literature.}
+\begin{itemize}
+  \item Reading vectors and linear concept directions in the residual stream
+        \citep{zou2023representation}.
+  \item Activation addition as a steering primitive
+        \citep{turner2023activation}; the relationship between steering
+        strength and output coherence.
+  \item Linear probing as evidence for linearly encoded features
+        \citep{alain2017understanding}, and the well-known caveat that a probe
+        can succeed without the feature being causally used.
+  \item \textbf{Our position:} we treat probe accuracy as evidence of
+        \emph{legibility} and steering effect as evidence of \emph{causal use},
+        and report them separately rather than conflating them.
+\end{itemize}
+
+\subsection{Cultural Bias and Value Alignment in LLMs}
+\todo{Survey what is known about cultural coverage in current models.}
+\begin{itemize}
+  \item Evidence that models default to Western cultural framings even when
+        prompted in another language \citep{naous2024having}.
+  \item Value and moral benchmarks, and their geographic skew.
+  \item Arabic-centric models and evaluation resources, e.g.\ Jais
+        \citep{sengupta2023jais}.
+\end{itemize}
+
+\subsection{Cross-lingual Representation}
+\todo{Connect to the shared-representation literature.}
+\begin{itemize}
+  \item Evidence for language-agnostic concept representations in multilingual
+        models, and the layers at which they emerge.
+  \item \textbf{Why it matters here:} if the Arabic and English exemplars of
+        one concept yield the same direction, cultural steering transfers
+        across the language of the prompt. If they do not, the concept is
+        represented twice, and that is a finding in itself
+        (\S\ref{sec:results}).
+\end{itemize}
+
+%--------------------------------------------------------------------------
+\section{Methodology}
+\label{sec:methodology}
+
+\subsection{Contrastive Vector Extraction}
+\label{sec:extraction}
+
+Let $h^{(\ell)}(x) \in \mathbb{R}^{d}$ denote the residual stream activation
+after transformer block $\ell$, averaged over the non-padding tokens of input
+$x$. Given a set $P$ of prompts expressing a cultural concept and a set $N$ of
+culturally neutral prompts, the concept vector is the normalised difference of
+the two means:
+
+\begin{equation}
+  \label{eq:extraction}
+  v^{(\ell)} =
+  \frac{
+    \frac{1}{|P|}\sum_{x \in P} h^{(\ell)}(x)
+    - \frac{1}{|N|}\sum_{x \in N} h^{(\ell)}(x)
+  }{
+    \left\lVert
+      \frac{1}{|P|}\sum_{x \in P} h^{(\ell)}(x)
+      - \frac{1}{|N|}\sum_{x \in N} h^{(\ell)}(x)
+    \right\rVert_{2}
+  }.
+\end{equation}
+
+Subtracting the neutral mean is what makes the direction concept-specific.
+Without it, the average is dominated by components shared by every sentence in
+the language, and the vectors for distinct concepts point in nearly the same
+direction. Three implementation choices matter for reproducibility:
+
+\begin{itemize}
+  \item \textbf{Padding is masked.} Batching prompts of unequal length pads the
+        short ones; including pad positions in the mean pulls short prompts
+        toward the pad embedding. Only leading or trailing pads are masked,
+        since GPT-2-style tokenizers reuse a single id for pad, bos and eos.
+  \item \textbf{Per-prompt then per-set averaging.} Each prompt is averaged
+        over its own real tokens before prompts are averaged together, so a
+        long prompt does not outvote a short one.
+  \item \textbf{Accumulation in \texttt{float32}} even when the model runs in
+        \texttt{bfloat16}.
+\end{itemize}
+
+\todo{State how many curated negatives were used per concept, or that the
+generated neutral bank was used, and report the sensitivity of the extracted
+direction to that choice.}
+
+\subsection{Hook-Based Steering}
+\label{sec:steering}
+
+Injection is the mirror image of extraction: a forward hook writes to the same
+residual stream point that extraction reads from. For every sequence position
+$t$ and every layer $\ell \in L$ in the injection set,
+
+\begin{equation}
+  \label{eq:injection}
+  h^{(\ell)}_{t} \leftarrow h^{(\ell)}_{t} + \alpha \, v^{(\ell)} .
+\end{equation}
+
+Hooks are attached with TransformerLens \citep{nanda2022transformerlens} and
+removed through a scoped context manager, so the model provably returns to its
+unmodified state after every measurement.
+
+Because $v^{(\ell)}$ has unit norm, the coefficient $\alpha$ is measured in
+residual stream norms and is the only magnitude parameter: $\alpha > 0$
+amplifies the concept, $\alpha < 0$ suppresses it, and $\alpha = 0$ recovers the
+unmodified model exactly. Since a zero offset is a mathematical no-op, the
+$\alpha = 0$ condition is measured through the identical code path as the
+steered conditions and serves as an exact control.
+
+\subsection{Linear Probes}
+\label{sec:probes}
+
+Equation~\ref{eq:extraction} requires choosing $\ell$. Rather than fixing it by
+convention, we fit an $L_2$-regularised logistic regression on standardised
+activations at each layer, discriminating concept prompts from neutral prompts,
+and report $k$-fold cross-validated accuracy against the majority-class floor.
+Standardisation matters because residual stream norms grow with depth; an
+unstandardised probe would find later layers easier for reasons unrelated to
+the concept. Cross-validation matters because with $d \gg n$ a linear
+classifier separates almost any labelling of the training set, including a
+random one.
+
+\todo{Report $n$ per concept, the number of folds, and the regularisation
+strength actually used.}
+
+%--------------------------------------------------------------------------
+\section{Experimental Setup}
+\label{sec:setup}
+
+\subsection{Models}
+\todo{Report the exact checkpoints, revisions, dtype and hardware.}
+\begin{itemize}
+  \item \texttt{meta-llama/Meta-Llama-3-8B-Instruct} --- the anglophone
+        instruction-tuned baseline.
+  \item \texttt{inceptionai/jais-13b-chat} --- an Arabic-centric model
+        \citep{sengupta2023jais}, to test whether cultural legibility depends
+        on Arabic-heavy pretraining.
+  \item \todo{Optionally a third model to separate scale from language mix.}
+\end{itemize}
+
+\subsection{Dataset}
+The concept dataset is distributed with the code as
+\texttt{data/datasets/cultural\_concepts.jsonl}, one JSON object per line.
+Each entry carries a stable identifier, the concept in Arabic and English, a
+category, a one-sentence definition, Arabic and English exemplar sentences,
+a cultural-context note, and a sentiment label that is permitted to be
+\texttt{mixed} --- contested concepts are recorded as contested rather than
+flattered into positives.
+
+\todo{Report the final concept count and per-category breakdown; describe the
+native-speaker review protocol and inter-annotator agreement; state dialect
+coverage.}
+
+\subsection{Metrics}
+\label{sec:metrics}
+We report effect and cost separately, because a steering configuration that
+leaves fluency untouched because it did nothing must not be mistaken for a
+cheap win.
+
+\begin{itemize}
+  \item \textbf{Probe accuracy} (\S\ref{sec:probes}): cross-validated, reported
+        against the majority-class floor. Evidence of legibility.
+  \item \textbf{Steering effect:} the KL divergence between the steered and
+        unsteered next-token distributions, averaged over prompts. Evidence
+        that the injection did something.
+  \item \textbf{Fluency cost:} mean cross-entropy on held-out text the steering
+        did not produce. Measured this way, a rise indicates damage to language
+        modelling rather than a change of topic.
+  \item \textbf{Human evaluation:} blind pairwise ratings of cultural
+        grounding, appropriateness and factuality by native speakers.
+        \todo{Report rater count, dialect backgrounds, instructions, pay, and
+        agreement statistics. The automatic metrics detect damage; only this
+        can establish success.}
+\end{itemize}
+
+\subsection{Baselines}
+\label{sec:baselines}
+Representation steering must be compared against the intervention any
+practitioner would try first: asking the model in plain language. We evaluate a
+no-instruction control, a direct instruction, and a persona framing
+(\S\ref{sec:results}). The two interventions are not symmetric --- steering
+perturbs the model, prompting only changes the input --- so cross-entropy on the
+\emph{prompt} is not comparable across them. We instead score the fluency of
+each condition's \emph{output} under the same unmodified model.
+
+%--------------------------------------------------------------------------
+\section{Results}
+\label{sec:results}
+
+\subsection{Where are cultural concepts linearly readable?}
+\todo{Insert the layer sweep figure and describe the shape of the curve.}
+
+\begin{figure}[t]
+  \centering
+  % \includegraphics[width=\columnwidth]{figures/layer_sweep.pdf}
+  \fbox{\parbox[c][3.5cm][c]{0.9\linewidth}{\centering
+    \todo{Figure: probe accuracy against layer index, one line per concept,
+    with the majority-class floor marked.}}}
+  \caption{Cross-validated probe accuracy by layer. Accuracy above the dashed
+  chance line indicates the concept is linearly readable at that depth.}
+  \label{fig:layer-sweep}
+\end{figure}
+
+\subsection{Steering effect against fluency cost}
+\todo{Insert the strength sweep and the layer-set grid.}
+
+\begin{table}[t]
+  \centering
+  \begin{tabular}{lrrr}
+    \toprule
+    Layers & $\alpha$ & Effect (KL) & Cost ($\Delta$ CE) \\
+    \midrule
+    $\{\ell^{*}\}$            & 1.0 & \todo{} & \todo{} \\
+    $\{\ell^{*}\}$            & 2.0 & \todo{} & \todo{} \\
+    $\{\ell^{*}-1,\ell^{*}\}$ & 1.0 & \todo{} & \todo{} \\
+    \bottomrule
+  \end{tabular}
+  \caption{Effect and cost for each injection configuration. Spreading the same
+  direction across more layers is expected to raise both.}
+  \label{tab:layer-sets}
+\end{table}
+
+\subsection{Steering versus prompting}
+\todo{Report the head-to-head comparison from \S\ref{sec:baselines}.}
+
+\begin{table}[t]
+  \centering
+  \begin{tabular}{lrrr}
+    \toprule
+    Condition & Grounding (human) & Fluency & Extra tokens \\
+    \midrule
+    No instruction     & \todo{} & \todo{} & 0 \\
+    Direct instruction & \todo{} & \todo{} & \todo{} \\
+    Persona framing    & \todo{} & \todo{} & \todo{} \\
+    Steering ($\alpha=\todo{}$) & \todo{} & \todo{} & 0 \\
+    \bottomrule
+  \end{tabular}
+  \caption{Representation steering against prompt-engineering baselines. The
+  persona framing is the hardest baseline and the one the claim rests on.}
+  \label{tab:baselines}
+\end{table}
+
+\subsection{Do Arabic and English exemplars share a direction?}
+\todo{Report the cosine similarity between vectors extracted from the Arabic-only
+and English-only exemplars of each concept, and whether steering with one
+transfers to prompts in the other.}
+
+\subsection{Does suppression remove the concept?}
+\todo{Negative $\alpha$ should remove the concept, not merely produce generic
+text. Report whether suppressed outputs remain on-topic.}
+
+%--------------------------------------------------------------------------
+\section{Limitations}
+\label{sec:limitations}
+
+\todo{State these plainly; reviewers will find them regardless.}
+\begin{itemize}
+  \item \textbf{Dataset scale and provenance.} A small concept inventory,
+        authored by a limited set of annotators, cannot represent "Arab
+        culture" as a whole; dialect and regional coverage is uneven.
+  \item \textbf{Probes are correlational.} High probe accuracy shows a
+        direction is readable, not that the model uses it. The steering
+        experiments are what speak to causal use.
+  \item \textbf{Automatic metrics detect damage, not success.} Cultural
+        grounding is established only by the human evaluation.
+  \item \textbf{Essentialism risk.} Encoding a culture as a set of vectors
+        risks reifying contested practices into fixed model behaviour.
+        \arabterm{wasta}{} in particular is normatively disputed within the
+        societies where it operates, which is why it carries a \texttt{mixed}
+        sentiment label.
+  \item \textbf{Dual use.} The same mechanism that amplifies a cultural concept
+        can suppress it.
+\end{itemize}
+
+%--------------------------------------------------------------------------
+\section{Conclusion}
+\label{sec:conclusion}
+
+\todo{Write once the results are in. The shape of the argument:}
+\begin{itemize}
+  \item Restate what was measured and what was found about legibility,
+        locality and controllability.
+  \item Say plainly whether steering beat the prompting baseline, and at what
+        cost in fluency.
+  \item \textbf{Future work:} curated minimal-pair negatives; more concepts and
+        wider dialect coverage; extending the method to other
+        under-represented cultures using the released toolkit; and combining
+        steering with prompting rather than treating them as alternatives.
+\end{itemize}
+
+%--------------------------------------------------------------------------
+\section*{Ethics Statement}
+\todo{Required by ACL. Cover: consent and compensation for native-speaker
+annotators; the essentialism risk noted in \S\ref{sec:limitations}; the dual-use
+concern that suppression is as easy as amplification; and the decision to label
+contested concepts as contested.}
+
+\section*{Reproducibility Statement}
+All code, the concept dataset, and the exact commands used to produce every
+number in this paper are released at
+\url{https://github.com/al3obdi/Thaqafa-RepE}.
+\todo{Add the release commit hash, the resolved dependency lockfile, random
+seeds, and total compute.}
+
+%--------------------------------------------------------------------------
+\bibliographystyle{plainnat}
+\bibliography{references}
+
+\end{document}
