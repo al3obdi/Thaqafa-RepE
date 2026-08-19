@@ -427,8 +427,10 @@ def sweep_layers_with_probe(
 
     engine._require_model()
 
-    positives = engine._resolve_examples(concept, positive_prompts)
-    negatives = build_contrast_examples(positives, negative_prompts)
+    positives, curated_contrasts = engine._resolve_examples(concept, positive_prompts)
+    # Same negative-side priority as extraction: explicit argument, then the
+    # dataset entry's curated minimal pairs, then the generated neutral bank.
+    negatives = build_contrast_examples(positives, negative_prompts or curated_contrasts)
     target_layers = list(range(engine.n_layers)) if layers is None else sorted(set(layers))
 
     logger.info(

@@ -65,12 +65,16 @@ Dataset contributions are licensed under CC BY-SA 4.0 (see
    `karam_001`. Identifiers must be unique.
 4. Provide at least three `examples_ar` and three `examples_en`. Examples should
    be natural sentences, not dictionary definitions.
-5. Write `cultural_context` in a way that a reader outside the culture can
+5. Provide at least two `contrast_ar` and two `contrast_en` minimal pairs:
+   sentences in the same frame as an exemplar with the concept absent - not
+   its moral opposite. Set `review_status` to `pending_native_review` unless
+   a native speaker has approved the entry, and state the `dialect`.
+6. Write `cultural_context` in a way that a reader outside the culture can
    follow: where the concept is used, who it binds, and what it costs to
    violate it.
-6. Set `sentiment` honestly. Contested concepts should be `mixed` rather than
+7. Set `sentiment` honestly. Contested concepts should be `mixed` rather than
    flattered into `positive`.
-7. Note the dialect or region in `cultural_context` when a concept is not
+8. Note the dialect or region in `cultural_context` when a concept is not
    pan-Arab.
 
 Validate your addition before opening a pull request:

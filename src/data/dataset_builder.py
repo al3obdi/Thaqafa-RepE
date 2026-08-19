@@ -56,9 +56,23 @@ class CulturalConcept:
         description: One-sentence definition in English.
         examples_ar: Arabic sentences that express the concept.
         examples_en: English sentences that express the concept.
+        contrast_ar: Arabic minimal-pair sentences - structurally close to the
+            exemplars but with the concept absent. Preferred over the generic
+            neutral bank as the negative side of the contrastive extraction,
+            because a minimal pair cancels topic and register, not only
+            "being an ordinary sentence".
+        contrast_en: English minimal-pair sentences, same contract.
         cultural_context: Notes on where and why the concept matters.
         sentiment: Overall valence, one of ``"positive"``, ``"negative"`` or
             ``"mixed"``.
+        dialect: Variety the Arabic exemplars are written in, for example
+            ``"MSA"`` or ``"MSA + Gulf"``. Concepts that are not pan-Arab say
+            so here.
+        review_status: Provenance of the cultural content. ``"reviewed"``
+            means a native speaker has approved the entry;
+            ``"pending_native_review"`` means it was drafted (by anyone,
+            human or machine) and still needs that approval. Results built on
+            unreviewed entries should say so.
     """
 
     concept_id: str
@@ -68,8 +82,12 @@ class CulturalConcept:
     description: str
     examples_ar: list[str] = field(default_factory=list)
     examples_en: list[str] = field(default_factory=list)
+    contrast_ar: list[str] = field(default_factory=list)
+    contrast_en: list[str] = field(default_factory=list)
     cultural_context: str = ""
     sentiment: str = "mixed"
+    dialect: str = "MSA"
+    review_status: str = "pending_native_review"
 
     @classmethod
     def from_dict(cls, record: dict[str, object]) -> CulturalConcept:
@@ -96,14 +114,27 @@ class CulturalConcept:
             description=str(record["description"]),
             examples_ar=_as_str_list(record.get("examples_ar")),
             examples_en=_as_str_list(record.get("examples_en")),
+            contrast_ar=_as_str_list(record.get("contrast_ar")),
+            contrast_en=_as_str_list(record.get("contrast_en")),
             cultural_context=str(record.get("cultural_context", "")),
             sentiment=str(record.get("sentiment", "mixed")),
+            dialect=str(record.get("dialect", "MSA")),
+            review_status=str(record.get("review_status", "pending_native_review")),
         )
 
     @property
     def all_examples(self) -> list[str]:
         """Return the Arabic and English examples concatenated."""
         return [*self.examples_ar, *self.examples_en]
+
+    @property
+    def all_contrasts(self) -> list[str]:
+        """Return the Arabic and English minimal-pair contrasts concatenated.
+
+        Empty when the entry carries no curated contrasts, in which case
+        extraction falls back to the generated neutral bank.
+        """
+        return [*self.contrast_ar, *self.contrast_en]
 
 
 def iter_concepts(path: Path | str = DEFAULT_DATASET_PATH) -> Iterator[CulturalConcept]:

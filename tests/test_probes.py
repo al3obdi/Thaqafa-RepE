@@ -265,13 +265,18 @@ class TestSweepLayersWithProbe:
 
         assert set(results) == {0, 3}
 
-    def test_prompts_default_to_the_dataset_and_neutral_bank(self) -> None:
+    def test_prompts_default_to_the_dataset_and_curated_contrasts(self) -> None:
         engine = make_marker_engine()
 
         results = sweep_layers_with_probe(engine, "diyafa_001", layers=[0])
 
-        # Two examples in the dataset entry, balanced by two neutral prompts.
-        assert results[0].n_samples == 4
+        from src.data.dataset_builder import load_concepts
+
+        entry = next(c for c in load_concepts(engine.dataset_path) if c.concept_id == "diyafa_001")
+        # Positives come from the entry's exemplars; negatives from its curated
+        # minimal-pair contrasts (preferred over the generated neutral bank).
+        assert entry.all_contrasts, "diyafa_001 should carry curated contrasts"
+        assert results[0].n_samples == len(entry.all_examples) + len(entry.all_contrasts)
 
     def test_unknown_concept_is_rejected(self) -> None:
         engine = make_marker_engine()
