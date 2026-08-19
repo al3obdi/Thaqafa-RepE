@@ -227,3 +227,151 @@ class TestNextTokenLogProbs:
 
         with pytest.raises(RuntimeError, match="not loaded"):
             next_token_log_probs(engine, "a prompt")
+
+
+class TestNormRelativeStrength:
+    """Strength calibrated against the layer's residual norm.
+
+    Residual norms grow steeply with depth - measured at 61 to 396 across
+    GPT-2's twelve layers - so an absolute coefficient is a strong
+    intervention early and a negligible one late. Relative mode divides that
+    scale out.
+    """
+
+    def test_absolute_mode_passes_the_coefficient_through(self) -> None:
+        engine = make_steerable_engine()
+
+        handle = engine.inject_vector("diyafa", strength=2.0, layers=[1])[0]
+
+        assert handle.strength == pytest.approx(2.0)
+
+    def test_relative_mode_scales_by_the_calibrated_norm(self) -> None:
+        engine = make_steerable_engine()
+        engine.layer_norms[1] = 50.0
+
+        handle = engine.inject_vector("diyafa", strength=0.1, layers=[1], strength_mode="relative")[
+            0
+        ]
+
+        # 10% of a residual norm of 50 is an absolute coefficient of 5.
+        assert handle.strength == pytest.approx(5.0)
+
+    def test_relative_mode_differs_per_layer(self) -> None:
+        # The same requested strength must become a different coefficient at
+        # each depth; that is the entire point of the mode.
+        engine = make_steerable_engine()
+        engine.layer_norms.update({0: 60.0, 3: 400.0})
+
+        handles = engine.inject_vector(
+            "diyafa", strength=0.1, layers=[0, 3], strength_mode="relative"
+        )
+
+        by_layer = {h.layer: h.strength for h in handles}
+        assert by_layer[0] == pytest.approx(6.0)
+        assert by_layer[3] == pytest.approx(40.0)
+
+    def test_relative_zero_is_still_a_no_op(self) -> None:
+        engine = make_steerable_engine()
+        engine.layer_norms[1] = 400.0
+
+        handle = engine.inject_vector("diyafa", strength=0.0, layers=[1], strength_mode="relative")[
+            0
+        ]
+
+        assert handle.strength == pytest.approx(0.0)
+
+    def test_unknown_mode_is_rejected(self) -> None:
+        engine = make_steerable_engine()
+
+        with pytest.raises(ValueError, match="Unknown strength_mode"):
+            engine.inject_vector("diyafa", strength=1.0, layers=[1], strength_mode="fractional")
+
+    def test_steering_context_forwards_the_mode(self) -> None:
+        engine = make_steerable_engine()
+        engine.layer_norms[1] = 20.0
+
+        with engine.steering(
+            "diyafa", strength=0.5, layers=[1], strength_mode="relative"
+        ) as handles:
+            assert handles[0].strength == pytest.approx(10.0)
+
+    def test_evaluate_steering_forwards_the_mode(self) -> None:
+        engine = make_steerable_engine()
+        engine.layer_norms[1] = 20.0
+
+        results = evaluate_steering(
+            engine,
+            "diyafa",
+            PROMPTS,
+            strengths=[0.5],
+            layers=[1],
+            generate=False,
+            strength_mode="relative",
+        )
+
+        # The fake's loss rises with the attached steering magnitude, so a
+        # 10x-scaled coefficient must cost more than the raw 0.5 would.
+        absolute = evaluate_steering(
+            engine, "diyafa", PROMPTS, strengths=[0.5], layers=[1], generate=False
+        )
+        assert results[0.5].mean_loss > absolute[0.5].mean_loss
+
+    def test_layer_set_grid_defaults_to_relative(self) -> None:
+        # Comparing layer configurations on an absolute grid is not a fair
+        # comparison, so this entry point flips the default.
+        import inspect
+
+        signature = inspect.signature(evaluate_layer_sets)
+        assert signature.parameters["strength_mode"].default == "relative"
+
+
+class TestCalibrateLayerNorms:
+    """Measuring the residual norm the relative mode divides by."""
+
+    def test_calibration_recovers_the_known_norms(self) -> None:
+        # The fake's activations have norm 10*(layer+1) by construction.
+        engine = make_steerable_engine()
+
+        norms = engine.calibrate_layer_norms(prompts=["a prompt"], layers=[0, 2])
+
+        assert norms[0] == pytest.approx(10.0)
+        assert norms[2] == pytest.approx(30.0)
+
+    def test_calibration_covers_every_layer_by_default(self) -> None:
+        engine = make_steerable_engine()
+
+        norms = engine.calibrate_layer_norms(prompts=["a prompt"])
+
+        assert set(norms) == set(range(4))
+
+    def test_results_are_cached_on_the_engine(self) -> None:
+        engine = make_steerable_engine()
+
+        engine.calibrate_layer_norms(prompts=["a prompt"], layers=[1])
+
+        assert engine.layer_norms[1] == pytest.approx(20.0)
+
+    def test_relative_injection_calibrates_on_demand(self) -> None:
+        # An uncalibrated layer must not silently fall back to absolute.
+        engine = make_steerable_engine()
+        assert engine.layer_norms == {}
+
+        handle = engine.inject_vector("diyafa", strength=0.1, layers=[3], strength_mode="relative")[
+            0
+        ]
+
+        assert engine.layer_norms[3] == pytest.approx(40.0)
+        assert handle.strength == pytest.approx(4.0)
+
+    def test_default_prompts_come_from_the_dataset(self) -> None:
+        engine = make_steerable_engine()
+
+        norms = engine.calibrate_layer_norms(layers=[0])
+
+        assert norms[0] == pytest.approx(10.0)
+
+    def test_empty_prompt_list_is_rejected(self) -> None:
+        engine = make_steerable_engine()
+
+        with pytest.raises(ValueError, match="No calibration prompts"):
+            engine.calibrate_layer_norms(prompts=[], layers=[0])

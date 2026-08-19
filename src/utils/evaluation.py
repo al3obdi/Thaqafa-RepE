@@ -135,6 +135,7 @@ def measure_steering_effect(
     prompts: list[str],
     strength: float,
     layers: list[int] | None = None,
+    strength_mode: str = "absolute",
 ) -> float:
     """Return how far steering moves the model's next-token distribution.
 
@@ -150,6 +151,8 @@ def measure_steering_effect(
         prompts: Texts to condition on.
         strength: Injection coefficient.
         layers: Layers to inject into. Defaults to the extraction layer.
+        strength_mode: ``"absolute"`` or ``"relative"``; see
+            :meth:`~src.models.rep_engine.CulturalRepE.inject_vector`.
 
     Returns:
         Mean KL divergence in nats. Zero means the injection changed nothing.
@@ -163,7 +166,7 @@ def measure_steering_effect(
 
     baselines = [next_token_log_probs(engine, prompt) for prompt in prompts]
 
-    with engine.steering(concept, strength=strength, layers=layers):
+    with engine.steering(concept, strength=strength, layers=layers, strength_mode=strength_mode):
         steered = [next_token_log_probs(engine, prompt) for prompt in prompts]
 
     divergences = [
@@ -199,6 +202,7 @@ def evaluate_steering(
     max_new_tokens: int = DEFAULT_MAX_NEW_TOKENS,
     generate: bool = True,
     measure_effect: bool = False,
+    strength_mode: str = "absolute",
 ) -> dict[float, SteeringResult]:
     """Sweep the injection strength and record output and fluency at each point.
 
@@ -226,6 +230,10 @@ def evaluate_steering(
         measure_effect: Whether to also record the KL divergence between the
             steered and unsteered next-token distributions. Off by default
             because it costs an extra forward pass per prompt per strength.
+        strength_mode: ``"absolute"`` or ``"relative"``. Use ``"relative"``
+            whenever the sweep is compared across layers or models: residual
+            norms grow with depth, so a fixed absolute grid probes a strong
+            intervention early and a negligible one late.
 
     Returns:
         A mapping from strength to its :class:`SteeringResult`, in the order the
@@ -250,7 +258,9 @@ def evaluate_steering(
     for strength in strengths:
         result = SteeringResult(strength=float(strength))
 
-        with engine.steering(concept, strength=strength, layers=layers) as handles:
+        with engine.steering(
+            concept, strength=strength, layers=layers, strength_mode=strength_mode
+        ) as handles:
             result.layers = tuple(handle.layer for handle in handles)
             for prompt in prompts:
                 result.prompt_losses[prompt] = compute_prompt_loss(engine, prompt)
@@ -265,7 +275,12 @@ def evaluate_steering(
 
         if measure_effect:
             result.effect_kl = measure_steering_effect(
-                engine, concept, prompts, strength=strength, layers=layers
+                engine,
+                concept,
+                prompts,
+                strength=strength,
+                layers=layers,
+                strength_mode=strength_mode,
             )
 
         results[float(strength)] = result
@@ -291,6 +306,7 @@ def evaluate_layer_sets(
     max_new_tokens: int = DEFAULT_MAX_NEW_TOKENS,
     generate: bool = False,
     measure_effect: bool = True,
+    strength_mode: str = "relative",
 ) -> dict[tuple[int, ...], dict[float, SteeringResult]]:
     """Sweep both which layers are injected into and how hard.
 
@@ -317,6 +333,11 @@ def evaluate_layer_sets(
             multiplies generation cost by the number of configurations.
         measure_effect: Whether to record the KL effect size. On by default
             here, since comparing configurations without it is meaningless.
+        strength_mode: Defaults to ``"relative"`` in this function alone.
+            Comparing layer configurations on an absolute grid is not a fair
+            comparison: the same coefficient is a far smaller perturbation at
+            a late layer than an early one, so a deep configuration would look
+            cheap and ineffective purely as an artefact of scale.
 
     Returns:
         A mapping from layer configuration (as a sorted tuple) to that
@@ -345,6 +366,7 @@ def evaluate_layer_sets(
             max_new_tokens=max_new_tokens,
             generate=generate,
             measure_effect=measure_effect,
+            strength_mode=strength_mode,
         )
         key = tuple(sorted({engine._resolve_layer(layer) for layer in layers}))
         grid[key] = sweep

@@ -279,6 +279,7 @@ def generate_steering_condition(
     strength: float = 1.0,
     layers: list[int] | None = None,
     max_new_tokens: int = DEFAULT_MAX_NEW_TOKENS,
+    strength_mode: str = "absolute",
 ) -> ConditionResult:
     """Generate answers with vector steering instead of an instruction.
 
@@ -293,6 +294,8 @@ def generate_steering_condition(
         strength: Injection coefficient.
         layers: Layers to inject into. Defaults to the extraction layer.
         max_new_tokens: Tokens to generate per prompt.
+        strength_mode: ``"absolute"`` or ``"relative"``; see
+            :meth:`~src.models.rep_engine.CulturalRepE.inject_vector`.
 
     Returns:
         The condition's generations and their fluency under the clean model.
@@ -307,7 +310,7 @@ def generate_steering_condition(
 
     result = ConditionResult(condition=f"steering@{strength:+.2f}")
 
-    with engine.steering(concept, strength=strength, layers=layers):
+    with engine.steering(concept, strength=strength, layers=layers, strength_mode=strength_mode):
         for prompt in prompts:
             result.full_inputs[prompt] = prompt
             output = generate_steered(engine, prompt, max_new_tokens=max_new_tokens)

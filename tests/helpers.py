@@ -160,6 +160,28 @@ class SteerableFakeModel:
         width = max(len(row) for row in rows)
         return torch.tensor([row + [0] * (width - len(row)) for row in rows], dtype=torch.long)
 
+    def run_with_cache(
+        self,
+        tokens: torch.Tensor,
+        **kwargs: Any,
+    ) -> tuple[None, dict[str, torch.Tensor]]:
+        """Return activations whose residual norm is a known function of depth.
+
+        Every token vector at layer L has L2 norm ``10 * (L + 1)``, so
+        ``calibrate_layer_norms`` has an exact answer to find and relative
+        steering can be asserted numerically. This mirrors the real shape of
+        the problem: norms that grow with depth.
+        """
+        hook_name = str(kwargs.get("names_filter") or RESID_POST_HOOK.format(layer=0))
+        layer = int(hook_name.split(".")[1])
+        target_norm = 10.0 * (layer + 1)
+
+        d_model = self.cfg.d_model
+        # A vector of d_model identical components c has norm sqrt(d_model)*c.
+        component = target_norm / (d_model**0.5)
+        activations = torch.full((*tokens.shape, d_model), component, dtype=torch.float32)
+        return None, {hook_name: activations}
+
     def __call__(self, text: Any, return_type: str = "logits") -> torch.Tensor:
         """Return a deterministic loss for a string, or logits for tokens."""
         if isinstance(text, str):

@@ -33,12 +33,23 @@ activation as it flows past:
 
     resid_post[layer] <- resid_post[layer] + strength * v_concept
 
-Because the vector is a unit direction, ``strength`` is measured in residual
-stream norms: positive values amplify the concept, negative values suppress it,
-and zero reproduces the unsteered model exactly. Hooks mutate the model until
-they are removed, so the recommended entry point is the :meth:`
-CulturalRepE.steering` context manager, which guarantees cleanup even when the
-body raises.
+Because the vector is a unit direction, ``strength`` is the only magnitude
+knob: positive values amplify the concept, negative values suppress it, and
+zero reproduces the unsteered model exactly.
+
+How that coefficient is *interpreted* matters more than it first appears. The
+residual stream grows through the network - measured at 61 to 396 across
+GPT-2's twelve layers - so a fixed absolute coefficient is a strong
+intervention early and a negligible one late. Injecting 8.0 at GPT-2's last
+layer moves the next-token distribution by a KL of 0.0009; the same
+intervention expressed as 50% of that layer's residual norm moves it by 0.43.
+``strength_mode="relative"`` divides that scale out, and is what makes a sweep
+comparable across layers and across models. See
+:meth:`CulturalRepE.calibrate_layer_norms`.
+
+Hooks mutate the model until they are removed, so the recommended entry point
+is the :meth:`CulturalRepE.steering` context manager, which guarantees cleanup
+even when the body raises.
 """
 
 from __future__ import annotations
@@ -185,6 +196,8 @@ class CulturalRepE:
     Attributes:
         concept_vectors: Mapping from concept name to the extracted direction.
         extraction_layers: Layer each cached vector was extracted from.
+        layer_norms: Mean residual stream norm per layer, populated by
+            :meth:`calibrate_layer_norms` and used by relative steering.
         model: The loaded model, or ``None`` until :meth:`load_model` is called.
         tokenizer: The loaded tokenizer, or ``None`` until :meth:`load_model`
             is called.
@@ -226,6 +239,7 @@ class CulturalRepE:
         self.tokenizer: Any | None = None
         self.concept_vectors: dict[str, torch.Tensor] = {}
         self.extraction_layers: dict[str, int] = {}
+        self.layer_norms: dict[int, float] = {}
         self._active_hooks: list[InjectionHandle] = []
 
     # ------------------------------------------------------------------
@@ -1245,6 +1259,116 @@ class CulturalRepE:
 
         return sorted({self._resolve_layer(layer) for layer in layers})
 
+    def calibrate_layer_norms(
+        self,
+        prompts: list[str] | None = None,
+        layers: list[int] | None = None,
+    ) -> dict[int, float]:
+        """Measure the mean residual stream norm at each layer.
+
+        The residual stream grows through the network - in GPT-2 it runs from
+        about 61 at layer 0 to about 396 at layer 11, a factor of six. A unit
+        concept direction added with the same coefficient is therefore a very
+        different intervention at different depths, and a coefficient tuned on
+        one model means nothing on another. Calibrating against these norms is
+        what makes ``strength_mode="relative"`` comparable across layers and
+        models.
+
+        Results are cached in :attr:`layer_norms`; call again to re-measure.
+
+        Args:
+            prompts: Texts to calibrate on. Defaults to the concept exemplars
+                in :attr:`dataset_path`, which is the distribution steering is
+                actually applied to.
+            layers: Layers to measure. Defaults to every block.
+
+        Returns:
+            A mapping from layer index to the mean per-token residual norm.
+
+        Raises:
+            ValueError: If no calibration prompts can be resolved.
+            RuntimeError: If the model has not been loaded.
+        """
+        model = self._require_model()
+
+        if prompts is None:
+            prompts = [
+                example
+                for entry in load_concepts(self.dataset_path)
+                for example in entry.all_examples
+            ]
+        if not prompts:
+            raise ValueError(
+                "No calibration prompts. Pass prompts= explicitly, or populate "
+                f"{self.dataset_path} with concept examples."
+            )
+
+        target_layers = list(range(self.n_layers)) if layers is None else sorted(set(layers))
+        logger.info(
+            "Calibrating residual norms on %d prompt(s) across %d layer(s)",
+            len(prompts),
+            len(target_layers),
+        )
+
+        for layer in target_layers:
+            resolved = self._resolve_layer(layer)
+            hook_name = RESID_POST_HOOK.format(layer=resolved)
+            totals: list[float] = []
+
+            with torch.no_grad():
+                for start in range(0, len(prompts), self.batch_size):
+                    batch = prompts[start : start + self.batch_size]
+                    tokens = model.to_tokens(batch)
+                    mask = self._build_attention_mask(tokens).to(tokens.device)
+
+                    _, cache = model.run_with_cache(
+                        tokens,
+                        attention_mask=mask,
+                        names_filter=hook_name,
+                        stop_at_layer=resolved + 1,
+                        return_type=None,
+                    )
+                    # Norm per token, averaged over the prompt's real tokens
+                    # only - padding positions would drag the mean down.
+                    norms = cache[hook_name].to(torch.float32).norm(dim=-1)
+                    weights = mask.to(torch.float32)
+                    per_prompt = (norms * weights).sum(dim=1) / weights.sum(dim=1).clamp(min=1.0)
+                    totals.extend(per_prompt.cpu().tolist())
+                    del cache
+
+            self.layer_norms[resolved] = sum(totals) / len(totals)
+
+        return {layer: self.layer_norms[layer] for layer in sorted(self.layer_norms)}
+
+    def _resolve_strength(self, strength: float, layer: int, strength_mode: str) -> float:
+        """Convert a requested strength into an absolute coefficient.
+
+        Args:
+            strength: The caller's coefficient.
+            layer: Layer the injection targets.
+            strength_mode: ``"absolute"`` uses the coefficient as given.
+                ``"relative"`` reads it as a fraction of the layer's mean
+                residual norm, so ``0.1`` perturbs by roughly ten percent of
+                the typical activation magnitude at that depth. Calibration
+                runs automatically when the layer has not been measured yet.
+
+        Returns:
+            The coefficient actually multiplied into the concept vector.
+
+        Raises:
+            ValueError: If ``strength_mode`` is not recognised.
+        """
+        if strength_mode == "absolute":
+            return strength
+        if strength_mode != "relative":
+            raise ValueError(
+                f"Unknown strength_mode {strength_mode!r}; expected 'absolute' or 'relative'."
+            )
+
+        if layer not in self.layer_norms:
+            self.calibrate_layer_norms(layers=[layer])
+        return strength * self.layer_norms[layer]
+
     def _make_injection_hook(
         self,
         vector: torch.Tensor,
@@ -1280,6 +1404,7 @@ class CulturalRepE:
         concept: str,
         strength: float = 1.0,
         layers: list[int] | None = None,
+        strength_mode: str = "absolute",
     ) -> list[InjectionHandle]:
         """Steer generation by adding a cached concept vector to the residual stream.
 
@@ -1299,10 +1424,21 @@ class CulturalRepE:
             strength: Scaling coefficient applied to the concept vector.
             layers: Layers to hook. Defaults to the layer recorded in
                 :attr:`extraction_layers`, or the middle layer if unknown.
+            strength_mode: How to read ``strength``. ``"absolute"`` (default,
+                and the historical behaviour) multiplies the unit direction by
+                the coefficient as given. ``"relative"`` reads it as a fraction
+                of the layer's mean residual norm, calibrating on first use.
+
+                Prefer ``"relative"`` for anything comparative. Residual norms
+                grow steeply with depth - by a factor of six across GPT-2 - so
+                the same absolute coefficient is a strong intervention early
+                and a negligible one late, and a value tuned on one model
+                carries no meaning on another.
 
         Returns:
             The handles that were attached, also appended to
-            ``self._active_hooks``.
+            ``self._active_hooks``. Each handle records the *effective*
+            (absolute) coefficient in :attr:`InjectionHandle.strength`.
 
         Raises:
             KeyError: If ``concept`` has no cached vector.
@@ -1324,13 +1460,19 @@ class CulturalRepE:
 
         handles: list[InjectionHandle] = []
         for layer in target_layers:
+            # Resolved per layer: under "relative" the same requested strength
+            # becomes a different coefficient at each depth, which is the whole
+            # point of the mode.
+            effective_strength = self._resolve_strength(strength, layer, strength_mode)
             hook_name = RESID_POST_HOOK.format(layer=layer)
             # nn.Module.__getattr__ is typed as returning Tensor | Module, so a
             # HookPoint reached through mod_dict has no usable static type. The
             # explicit Any keeps that unavoidable looseness in one place.
             hook_point: Any = model.mod_dict[hook_name]
 
-            model.add_hook(hook_name, self._make_injection_hook(vector, strength), dir="fwd")
+            model.add_hook(
+                hook_name, self._make_injection_hook(vector, effective_strength), dir="fwd"
+            )
 
             # add_hook returns None; TransformerLens appends the handle it
             # created to the hook point, so the newest entry is ours.
@@ -1339,7 +1481,7 @@ class CulturalRepE:
                     concept=concept,
                     layer=layer,
                     hook_name=hook_name,
-                    strength=strength,
+                    strength=effective_strength,
                     _hook_point=hook_point,
                     _lens_handle=hook_point.fwd_hooks[-1],
                 )
@@ -1347,9 +1489,10 @@ class CulturalRepE:
 
         self._active_hooks.extend(handles)
         logger.info(
-            "Injected %s at strength %.3f into layer(s) %s",
+            "Injected %s at strength %.3f (%s) into layer(s) %s",
             concept,
             strength,
+            strength_mode,
             ", ".join(str(layer) for layer in target_layers),
         )
         return handles
@@ -1418,6 +1561,7 @@ class CulturalRepE:
         concept: str,
         strength: float = 1.0,
         layers: list[int] | None = None,
+        strength_mode: str = "absolute",
     ) -> Iterator[list[InjectionHandle]]:
         """Steer the model for the duration of a ``with`` block.
 
@@ -1432,6 +1576,8 @@ class CulturalRepE:
                 :meth:`extract_vector`.
             strength: Scaling coefficient applied to the concept vector.
             layers: Layers to hook. Defaults to the extraction layer.
+            strength_mode: ``"absolute"`` or ``"relative"``; see
+                :meth:`inject_vector`.
 
         Yields:
             The handles attached for this scope.
@@ -1443,7 +1589,9 @@ class CulturalRepE:
             >>> with engine.steering("diyafa_001", strength=2.0):  # doctest: +SKIP
             ...     steered = engine.model.generate("A guest arrives", max_new_tokens=20)
         """
-        handles = self.inject_vector(concept=concept, strength=strength, layers=layers)
+        handles = self.inject_vector(
+            concept=concept, strength=strength, layers=layers, strength_mode=strength_mode
+        )
         try:
             yield handles
         finally:

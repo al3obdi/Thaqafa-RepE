@@ -234,12 +234,31 @@ Hooks are attached with TransformerLens \citep{nanda2022transformerlens} and
 removed through a scoped context manager, so the model provably returns to its
 unmodified state after every measurement.
 
-Because $v^{(\ell)}$ has unit norm, the coefficient $\alpha$ is measured in
-residual stream norms and is the only magnitude parameter: $\alpha > 0$
-amplifies the concept, $\alpha < 0$ suppresses it, and $\alpha = 0$ recovers the
-unmodified model exactly. Since a zero offset is a mathematical no-op, the
-$\alpha = 0$ condition is measured through the identical code path as the
-steered conditions and serves as an exact control.
+Because $v^{(\ell)}$ has unit norm, the coefficient $\alpha$ is the only
+magnitude parameter: $\alpha > 0$ amplifies the concept, $\alpha < 0$ suppresses
+it, and $\alpha = 0$ recovers the unmodified model exactly. Since a zero offset
+is a mathematical no-op, the $\alpha = 0$ condition is measured through the
+identical code path as the steered conditions and serves as an exact control.
+
+\paragraph{Norm-calibrated strength.} An absolute $\alpha$ is not comparable
+across layers or models. The residual stream grows with depth --- we measure a
+mean per-token norm rising from $61$ at layer $0$ to $396$ at layer $11$ in
+GPT-2, a factor of six --- so a fixed $\alpha$ is a large perturbation early
+and a negligible one late. We therefore report strengths relative to the
+layer's mean residual norm,
+
+\begin{equation}
+  \label{eq:relative-strength}
+  \alpha^{(\ell)}_{\text{abs}} = \alpha \cdot
+  \mathbb{E}_{x, t}\!\left[\lVert h^{(\ell)}_{t}(x) \rVert_{2}\right],
+\end{equation}
+
+with the expectation estimated over the concept exemplars. The effect of this
+choice is not cosmetic: at GPT-2's layer 11, $\alpha_{\text{abs}} = 8$ moves
+the next-token distribution by a KL of $0.0009$, while the same intervention
+expressed as $\alpha = 0.5$ of the layer norm moves it by $0.43$. Sweeps
+reported on an uncalibrated grid would understate steering at depth by two
+orders of magnitude.
 
 \subsection{Linear Probes}
 \label{sec:probes}
