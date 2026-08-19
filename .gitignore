@@ -65,6 +65,10 @@ wandb/
 *.ckpt
 *.onnx
 
+# `results/` is deliberately NOT ignored: it holds the committed artefacts of
+# experiment runs (manifest, CSVs, report), which are the evidence behind every
+# number the paper quotes. `outputs/` is the scratch equivalent for local runs.
+
 # Keep paper result CSVs and Markdown tracked for reproducibility
 !outputs/paper_results/
 !outputs/paper_results/*.csv

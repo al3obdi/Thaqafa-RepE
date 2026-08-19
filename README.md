@@ -330,6 +330,28 @@ Effect and cost are reported separately on purpose. A configuration that leaves
 fluency untouched because it did nothing is not a cheap win, and cross-entropy
 alone cannot tell the two apart.
 
+## Pilot results
+
+A complete pilot run against `gpt2` is committed under
+[`results/pilot_gpt2/`](results/pilot_gpt2/), alongside a `manifest.json` that
+pins the commit, the seed, the dataset hash and the installed package versions.
+Every number the paper quotes comes from an artefact of this kind — nothing in
+this repository reports a measurement it did not make.
+
+```bash
+# Reproduce it (CPU, no token required)
+python scripts/run_pilot.py --model gpt2 --output-dir results/pilot_gpt2 --seed 42
+```
+
+The runner probes every layer, extracts each concept at the layer the probe
+picked, sweeps norm-relative injection strengths recording effect against cost,
+and compares steering with prompt-engineering baselines.
+
+`gpt2` has almost no Arabic capability, so the pilot establishes that the
+pipeline measures what it claims to; it is not evidence about Arab cultural
+concepts. Read [`results/pilot_gpt2/README.md`](results/pilot_gpt2/README.md)
+for the numbers and the limitations that travel with them.
+
 ## Project Structure
 
 ```text
@@ -340,9 +362,11 @@ Thaqafa-RepE/
 │   ├── 02_vector_extraction.ipynb # Extract vectors, sweep layers
 │   └── 03_concept_injection.ipynb # Steer generation, sweep strengths
 ├── scripts/                       # Reproducible CLI entry points
+│   ├── run_pilot.py               # Full experiment: probe, steer, baseline
 │   ├── extract_vectors.py
 │   ├── inject_concepts.py
 │   └── evaluate.py
+├── results/pilot_gpt2/            # Committed run artefacts + manifest.json
 ├── src/
 │   ├── data/dataset_builder.py    # CulturalConcept dataclass and loaders
 │   ├── data/contrastive.py        # Neutral baseline prompts (AR + EN)
@@ -350,6 +374,7 @@ Thaqafa-RepE/
 │   ├── utils/baselines.py         # Prompt-engineering comparison conditions
 │   ├── utils/evaluation.py        # Strength and layer sweeps, effect vs cost
 │   ├── utils/probes.py            # Cross-validated linear probes per layer
+│   ├── utils/provenance.py        # Run manifests: commit, seed, dataset hash
 │   └── utils/visualization.py     # Layer sweeps, similarity heatmaps
 ├── data/
 │   ├── raw/                       # Untracked source material
@@ -426,8 +451,10 @@ See the [Zero-GPU Guide](docs/zero_gpu_guide.md) for step-by-step instructions.
       that reports generations alongside a fluency guardrail.
 - [x] **Phase 4a — Evaluation tooling.** Linear probes, layer-set grids,
       prompt-engineering baselines and the LaTeX paper scaffold.
-- [ ] **Phase 4b — Running the experiments.** Real models, native-speaker
-      rating of cultural grounding, and filling in the paper's results.
+- [ ] **Phase 4b — Running the experiments.** A reproducible `gpt2` pilot with
+      committed, provenance-stamped artefacts is done; a capable multilingual
+      model, native-speaker rating of cultural grounding, and filling in the
+      paper's results are still open.
 - [ ] **Phase 5 — Publication.** Release the dataset, vectors and paper.
 
 ## Citation

@@ -452,8 +452,19 @@ contested concepts as contested.}
 All code, the concept dataset, and the exact commands used to produce every
 number in this paper are released at
 \url{https://github.com/al3obdi/Thaqafa-RepE}.
-\todo{Add the release commit hash, the resolved dependency lockfile, random
-seeds, and total compute.}
+
+Every experiment is run through a single entry point,
+\texttt{scripts/run\_pilot.py}, which writes a \texttt{manifest.json} beside its
+results recording the commit the code was at, whether that working tree was
+clean, the random seed, the SHA-256 of the concept dataset, and the installed
+versions of the dependencies that can move a number without any change to this
+work (\texttt{torch}, \texttt{transformer-lens}, \texttt{transformers},
+\texttt{scikit-learn}, \texttt{numpy}). Dependencies are pinned by a committed
+Poetry lockfile. A reader can therefore tell whether a rerun is comparable
+before comparing anything. The committed artefacts of each run live under
+\texttt{results/}, and no table in this paper reports a number that is not
+backed by one of them.
+\todo{Add the release commit hash and total compute for the reported runs.}
 
 %--------------------------------------------------------------------------
 \bibliographystyle{plainnat}

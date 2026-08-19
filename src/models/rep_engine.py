@@ -161,12 +161,6 @@ class InjectionHandle:
         self._removed = True
 
 
-CONCEPT_NAMES: dict[str, str] = {
-    "wasta_001": "Wasta (intercession)",
-    "muruah_001": "Muruah (manly virtue)",
-    "diyafa_001": "Diyafa (hospitality)",
-}
-
 EVALUATION_PROMPTS: list[str] = [
     "A guest arrives at your home unexpectedly.",
     "You are asked to recommend a friend for a job.",
@@ -530,6 +524,29 @@ class CulturalRepE:
     # ------------------------------------------------------------------
     # Concept vectors
     # ------------------------------------------------------------------
+
+    def _concept_display_name(self, concept: str) -> str:
+        """Return a human-readable name for a concept id.
+
+        Resolved from the dataset rather than a hard-coded table, so a concept
+        added to the JSONL is named correctly without a second edit here.
+
+        Args:
+            concept: Concept identifier, or an already-readable name.
+
+        Returns:
+            The dataset's English name, or *concept* unchanged when it is not a
+            dataset entry.
+        """
+        from src.data.dataset_builder import iter_concepts
+
+        try:
+            for entry in iter_concepts(self.dataset_path):
+                if entry.concept_id == concept:
+                    return entry.concept_en
+        except (OSError, ValueError):
+            return concept
+        return concept
 
     def _resolve_examples(
         self,
@@ -1054,7 +1071,7 @@ class CulturalRepE:
         for cid in concept_ids:
             if cid not in self.concept_vectors:
                 continue
-            concept_name = CONCEPT_NAMES.get(cid, cid)
+            concept_name = self._concept_display_name(cid)
             comp = compare_steering_vs_prompting(
                 self,
                 cid,
