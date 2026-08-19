@@ -66,8 +66,10 @@ that other under-represented cultures can adapt, not a single benchmark score.
   would try first (`src.utils.baselines`).
 - **Paper scaffold** — a LaTeX skeleton with the methodology written out and
   every unwritten number flagged (`docs/research_paper`).
-- **Research-grade tooling** — Poetry-pinned dependencies, pre-commit hooks,
-  type hints throughout, and CI running ruff, black and pytest.
+- **Research-grade tooling** — a committed `poetry.lock`, pinned lint
+  tooling, pre-commit hooks, type hints throughout, and CI running ruff,
+  black, mypy and pytest with a coverage floor, plus a weekly smoke test
+  against real pretrained weights.
 
 > **Status: pipeline complete, experiments pending.** Extraction, injection,
 > linear probes, layer-set sweeps and prompt-engineering baselines all work and
@@ -404,7 +406,8 @@ See the [Zero-GPU Guide](docs/zero_gpu_guide.md) for step-by-step instructions.
 
 ## Citation
 
-A paper is in preparation. Until then, please cite the repository:
+A paper is in preparation. Until then, please cite the repository
+(machine-readable metadata in [`CITATION.cff`](CITATION.cff)):
 
 ```bibtex
 @software{thaqafa_repe_2026,
@@ -422,4 +425,7 @@ review of existing entries. See [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## License
 
-Released under the [MIT License](LICENSE).
+Code is released under the [MIT License](LICENSE). The cultural concepts
+dataset (`data/datasets/`) is licensed separately under
+[CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/) — see
+[`data/datasets/README.md`](data/datasets/README.md).

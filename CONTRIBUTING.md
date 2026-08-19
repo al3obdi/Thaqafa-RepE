@@ -55,6 +55,9 @@ not just the implementation. Include:
 This is the most valuable contribution, and the one that most needs native
 speaker judgement.
 
+Dataset contributions are licensed under CC BY-SA 4.0 (see
+`data/datasets/README.md`); by submitting concepts you agree to that.
+
 1. Append one line per concept to `data/datasets/cultural_concepts.jsonl` —
    one JSON object per line, no trailing commas, UTF-8 encoded.
 2. Use the full schema; every field in the README's schema table is required.
@@ -113,6 +116,7 @@ stage the result and commit again.
 
 ## Code of Conduct
 
-Be respectful and assume good faith. This project deals with living cultures and
-contested social practices; discuss them as you would with the people they
-belong to.
+This project follows the [Code of Conduct](CODE_OF_CONDUCT.md). The short
+version: be respectful, assume good faith, discuss cultural concepts
+descriptively rather than prescriptively, and treat native-speaker review
+as authoritative on cultural content.

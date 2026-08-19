@@ -1,0 +1,21 @@
+cff-version: 1.2.0
+message: "If you use this software or the cultural concepts dataset, please cite it as below."
+title: "Thaqafa-RepE: Representation Engineering for Arab Cultural Concepts in Large Language Models"
+type: software
+authors:
+  - name: "Thaqafa-RepE Contributors"
+repository-code: "https://github.com/al3obdi/Thaqafa-RepE"
+license: MIT
+keywords:
+  - representation-engineering
+  - interpretability
+  - cultural-alignment
+  - arabic
+  - nlp
+abstract: >-
+  A reproducible toolkit for studying whether Arab cultural concepts are
+  linearly represented inside open-weight language models, and whether those
+  representations can be steered: a bilingual concept dataset, contrastive
+  mean-difference vector extraction, hook-based steering with a scoped
+  context manager, and an evaluation protocol reporting steering effect
+  against fluency cost.
