@@ -20,7 +20,6 @@ import argparse
 import logging
 import os
 import sys
-import time
 from pathlib import Path
 from typing import Any
 
@@ -29,7 +28,6 @@ logger = logging.getLogger("space_extraction")
 DEFAULT_SPACE = "al3obdi/thaqafa-repe-extraction"
 DEFAULT_DATASET = "al3obdi/thaqafa-repe-vectors"
 DEFAULT_MODEL = "meta-llama/Meta-Llama-3-8B-Instruct"
-POLL_INTERVAL = 5  # seconds between status checks
 MAX_WAIT = 600  # 10 minutes max wait for a job
 
 
@@ -75,9 +73,9 @@ def _create_client(space_name: str, token: str) -> Any:
         )
         raise SystemExit(1) from exc
 
-    space_url = "https://al3obdi-thaqafa-repe-extraction.hf.space"
     try:
-        client = Client(space_url, hf_token=token)
+        # Client accepts the plain "owner/repo" Space id directly.
+        client = Client(space_name, hf_token=token)
         logger.info("Connected to Space: %s", space_name)
         return client
     except Exception as exc:
@@ -115,9 +113,13 @@ def _submit_job(
         SystemExit: If submission fails.
     """
     try:
+        # Inputs are positional in gradio_client; the endpoint is the
+        # api_name declared on the extract button in space_config/app.py.
         job = client.submit(
-            fn_index=0,
-            inputs=[concept_ids, model_name, dataset_name],
+            concept_ids,
+            model_name,
+            dataset_name,
+            api_name="/extract",
         )
         logger.info("Job submitted for concepts: %s", concept_ids)
         return job
@@ -139,30 +141,28 @@ def _wait_for_job(job: Any) -> str:
         SystemExit: If the job times out or fails.
     """
     print("Waiting for extraction to complete...", flush=True)
-    elapsed = 0
-    while elapsed < MAX_WAIT:
-        status = job.status()
-        # gradio_client Job.status() returns a JobStatus object
-        # with a .code attribute (PENDING, IN_PROGRESS, SUCCESS, ERROR)
-        code = getattr(status, "code", None)
-        if code == "SUCCESS":
-            result = job.result()
-            print(f"✅ Job completed: {result}", flush=True)
-            return str(result)
-        if code == "ERROR":
-            print(f"❌ Job failed: {status}", file=sys.stderr)
-            raise SystemExit(1)
-        # Still running
-        print(f"  [{elapsed}s] Status: {code}...", flush=True)
-        time.sleep(POLL_INTERVAL)
-        elapsed += POLL_INTERVAL
+    # result() blocks until the job finishes and raises on failure. This is
+    # the supported gradio_client pattern: Job.status().code is a Status enum
+    # with no "SUCCESS"/"ERROR" members, so polling against those strings
+    # would spin until the timeout even on a successful job.
+    try:
+        result = job.result(timeout=MAX_WAIT)
+    except Exception as exc:
+        print(
+            f"ERROR: Job failed or timed out after {MAX_WAIT}s: {exc}. "
+            "The Space may be cold-starting or the model is too large.",
+            file=sys.stderr,
+        )
+        raise SystemExit(1) from exc
 
-    print(
-        f"ERROR: Job timed out after {MAX_WAIT}s. "
-        "The Space may be cold-starting or the model is too large.",
-        file=sys.stderr,
-    )
-    raise SystemExit(1)
+    result_text = str(result)
+    if result_text.lstrip().startswith("❌"):
+        # The Space app reports failures as strings rather than raising.
+        print(f"❌ Job failed: {result_text}", file=sys.stderr)
+        raise SystemExit(1)
+
+    print(f"✅ Job completed: {result_text}", flush=True)
+    return result_text
 
 
 def _load_results(

@@ -211,6 +211,7 @@ def save_vectors_to_hf(
     dataset_name: str = DEFAULT_DATASET,
     metadata: dict[str, Any] | None = None,
     token: str | None = None,
+    config_name: str | None = None,
 ) -> str:
     """Save extracted concept vectors to a Hugging Face Dataset.
 
@@ -224,6 +225,9 @@ def save_vectors_to_hf(
         metadata: Optional metadata dict. See :func:`_build_dataset_rows`
             for recognised keys.
         token: Hugging Face access token. Defaults to ``HF_TOKEN`` env var.
+        config_name: Optional dataset config to push under. Pushing replaces
+            the target config wholesale, so use one config per model to keep
+            extractions from different models from overwriting each other.
 
     Returns:
         The URL of the updated dataset.
@@ -242,7 +246,14 @@ def save_vectors_to_hf(
         from datasets import Dataset
 
         ds = Dataset.from_list(rows)
-        ds.push_to_hub(dataset_name, token=resolved_token, private=True)
+        if config_name is not None:
+            # A named config scopes the overwrite: pushing model B's vectors
+            # under its own config leaves model A's config untouched.
+            ds.push_to_hub(
+                dataset_name, config_name=config_name, token=resolved_token, private=True
+            )
+        else:
+            ds.push_to_hub(dataset_name, token=resolved_token, private=True)
     except ImportError as exc:
         raise HFIntegrationError(
             "The 'datasets' library is required. Install it with 'pip install datasets'."
@@ -259,6 +270,7 @@ def load_vectors_from_hf(
     dataset_name: str = DEFAULT_DATASET,
     concept_ids: list[str] | None = None,
     token: str | None = None,
+    config_name: str | None = None,
 ) -> dict[str, torch.Tensor]:
     """Load concept vectors from a Hugging Face Dataset.
 
@@ -267,6 +279,8 @@ def load_vectors_from_hf(
         concept_ids: Optional list of concept IDs to load. ``None`` loads
             everything.
         token: Hugging Face access token. Defaults to ``HF_TOKEN`` env var.
+        config_name: Optional dataset config to read, matching the one used
+            at save time. ``None`` reads the default config.
 
     Returns:
         A mapping from ``concept_id`` to a 1-D float32 tensor.
@@ -282,7 +296,10 @@ def load_vectors_from_hf(
     try:
         from datasets import load_dataset
 
-        ds = load_dataset(dataset_name, token=resolved_token)
+        if config_name is not None:
+            ds = load_dataset(dataset_name, config_name, token=resolved_token)
+        else:
+            ds = load_dataset(dataset_name, token=resolved_token)
         # datasets returns a DatasetDict; take the first split
         split_name = list(ds.keys())[0] if hasattr(ds, "keys") else "train"
         rows: list[dict[str, Any]] = [dict(row) for row in ds[split_name]]
@@ -343,7 +360,15 @@ def sync_with_space(
 
     runtime = getattr(info, "runtime", None)
     stage = getattr(runtime, "stage", "unknown") if runtime else "unknown"
-    hardware = getattr(runtime, "hardware", {}).get("requested") if runtime else None
+    # runtime.hardware has been a plain string, a dataclass and a dict across
+    # huggingface_hub releases; normalise all three without crashing.
+    raw_hardware = getattr(runtime, "hardware", None) if runtime else None
+    if isinstance(raw_hardware, dict):
+        hardware = raw_hardware.get("requested") or raw_hardware.get("current")
+    elif raw_hardware is None:
+        hardware = None
+    else:
+        hardware = getattr(raw_hardware, "requested", None) or str(raw_hardware)
 
     return {
         "space_url": f"https://huggingface.co/spaces/{space_name}",

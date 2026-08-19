@@ -9,7 +9,7 @@ from __future__ import annotations
 import os
 import sys
 from typing import Any
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
 import pytest
 import torch
@@ -31,37 +31,34 @@ def mock_vectors() -> dict[str, torch.Tensor]:
 
 @pytest.fixture
 def mock_job_success() -> MagicMock:
-    """Return a mock gradio_client Job that succeeds immediately."""
+    """A Job whose result() returns, matching the real gradio_client contract.
+
+    The real Job.status().code is a Status enum with no SUCCESS/ERROR
+    members, which is why the code under test relies on result() alone -
+    and why these fixtures model result(), not status strings.
+    """
     job = MagicMock()
-    status = MagicMock()
-    status.code = "SUCCESS"
-    job.status.return_value = status
-    job.result.return_value = "Extracted 3 vectors from model"
+    job.result.return_value = "✅ Extracted 3 vectors from model"
     return job
 
 
 @pytest.fixture
 def mock_job_error() -> MagicMock:
-    """Return a mock gradio_client Job that fails."""
+    """A Job whose result() raises, as the real client does on failure."""
     job = MagicMock()
-    status = MagicMock()
-    status.code = "ERROR"
-    job.status.return_value = status
+    job.result.side_effect = RuntimeError("remote endpoint raised")
     return job
 
 
 @pytest.fixture
-def mock_job_pending_then_success() -> MagicMock:
-    """Return a mock gradio_client Job that is pending then succeeds."""
+def mock_job_app_reported_failure() -> MagicMock:
+    """A Job that finished, but whose app-level status string is an error.
+
+    The Space app reports failures as returned strings starting with the
+    cross-mark emoji instead of raising, so callers must inspect the text.
+    """
     job = MagicMock()
-    pending_status = MagicMock()
-    pending_status.code = "IN_PROGRESS"
-
-    success_status = MagicMock()
-    success_status.code = "SUCCESS"
-
-    job.status.side_effect = [pending_status, success_status]
-    job.result.return_value = "Done"
+    job.result.return_value = "❌ Model load failed: out of memory"
     return job
 
 
@@ -145,12 +142,19 @@ class TestSubmitJob:
     """Test job submission to the Space."""
 
     def test_submit_job_success(self, mock_client: MagicMock) -> None:
-        """Job is submitted successfully."""
+        """Inputs are passed positionally with the named endpoint.
+
+        gradio_client has no inputs= keyword; anything unknown lands in
+        **kwargs as a bogus endpoint parameter. Pinning the exact call shape
+        keeps that regression from coming back.
+        """
         from scripts.run_space_extraction import _submit_job
 
         job = _submit_job(mock_client, "wasta_001,diyafa_001", "model", "dataset")
         assert job is not None
-        mock_client.submit.assert_called_once()
+        mock_client.submit.assert_called_once_with(
+            "wasta_001,diyafa_001", "model", "dataset", api_name="/extract"
+        )
 
     def test_submit_job_failure(self) -> None:
         """Submission failure raises SystemExit."""
@@ -168,50 +172,42 @@ class TestSubmitJob:
 
 
 class TestWaitForJob:
-    """Test job polling."""
+    """Waiting on a submitted job via Job.result()."""
 
     def test_wait_for_job_success(self, mock_job_success: MagicMock) -> None:
-        """Job completes successfully."""
+        """A finished job's result text is returned."""
         from scripts.run_space_extraction import _wait_for_job
 
-        # Patch MAX_WAIT and POLL_INTERVAL to avoid long waits
-        with patch("scripts.run_space_extraction.POLL_INTERVAL", 0.01):
-            result = _wait_for_job(mock_job_success)
+        result = _wait_for_job(mock_job_success)
+
         assert "extracted" in result.lower()
+        mock_job_success.result.assert_called_once_with(timeout=600)
 
-    def test_wait_for_job_error(self, mock_job_error: MagicMock) -> None:
-        """Job error raises SystemExit."""
+    def test_wait_for_job_raising_result_exits(self, mock_job_error: MagicMock) -> None:
+        """result() raising (failure or timeout) becomes SystemExit."""
         from scripts.run_space_extraction import _wait_for_job
 
-        with patch("scripts.run_space_extraction.POLL_INTERVAL", 0.01):
-            with pytest.raises(SystemExit):
-                _wait_for_job(mock_job_error)
+        with pytest.raises(SystemExit):
+            _wait_for_job(mock_job_error)
 
-    def test_wait_for_job_timeout(self) -> None:
-        """Job timeout raises SystemExit."""
-        job = MagicMock()
-        pending_status = MagicMock()
-        pending_status.code = "IN_PROGRESS"
-        job.status.return_value = pending_status
-
-        from scripts.run_space_extraction import _wait_for_job
-
-        with (
-            patch("scripts.run_space_extraction.POLL_INTERVAL", 0.01),
-            patch("scripts.run_space_extraction.MAX_WAIT", 0.05),
-        ):
-            with pytest.raises(SystemExit):
-                _wait_for_job(job)
-
-    def test_wait_for_job_pending_then_success(
-        self, mock_job_pending_then_success: MagicMock
+    def test_wait_for_job_app_reported_failure_exits(
+        self, mock_job_app_reported_failure: MagicMock
     ) -> None:
-        """Job is pending then succeeds."""
+        """A returned app-level error string is treated as a failure."""
         from scripts.run_space_extraction import _wait_for_job
 
-        with patch("scripts.run_space_extraction.POLL_INTERVAL", 0.01):
-            result = _wait_for_job(mock_job_pending_then_success)
-        assert result is not None
+        with pytest.raises(SystemExit):
+            _wait_for_job(mock_job_app_reported_failure)
+
+    def test_wait_for_job_timeout_exits(self) -> None:
+        """A timeout raised by result() becomes SystemExit."""
+        job = MagicMock()
+        job.result.side_effect = TimeoutError("timed out")
+
+        from scripts.run_space_extraction import _wait_for_job
+
+        with pytest.raises(SystemExit):
+            _wait_for_job(job)
 
 
 # ---------------------------------------------------------------------------
@@ -321,10 +317,7 @@ class TestExtractViaSpace:
         mock_client_cls = MagicMock()
         mock_client = MagicMock()
         mock_job = MagicMock()
-        mock_status = MagicMock()
-        mock_status.code = "SUCCESS"
-        mock_job.status.return_value = mock_status
-        mock_job.result.return_value = "Done"
+        mock_job.result.return_value = "✅ Done"
         mock_client.submit.return_value = mock_job
         mock_client_cls.return_value = mock_client
 
@@ -397,9 +390,7 @@ class TestExtractViaSpace:
         mock_client_cls = MagicMock()
         mock_client = MagicMock()
         mock_job = MagicMock()
-        mock_status = MagicMock()
-        mock_status.code = "ERROR"
-        mock_job.status.return_value = mock_status
+        mock_job.result.side_effect = RuntimeError("remote endpoint raised")
         mock_client.submit.return_value = mock_job
         mock_client_cls.return_value = mock_client
 
@@ -416,7 +407,7 @@ class TestExtractViaSpace:
 
         monkeypatch.setattr(builtins, "__import__", custom_import)
 
-        with pytest.raises(RuntimeError, match="job failed"):
+        with pytest.raises(RuntimeError, match="failed or timed out"):
             engine.extract_via_space(concept_ids=["wasta_001"])
 
     def test_extract_via_space_no_token(self, monkeypatch: pytest.MonkeyPatch) -> None:

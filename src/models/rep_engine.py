@@ -800,8 +800,6 @@ class CulturalRepE:
             RuntimeError: If the Space is unreachable or the job fails.
             MissingTokenError: If no token is available.
         """
-        import time
-
         from src.utils.hf_integration import _resolve_token
 
         resolved_token = _resolve_token(token)
@@ -814,11 +812,13 @@ class CulturalRepE:
                 "Install it with: pip install gradio_client"
             ) from exc
 
-        space_url = f"https://{space_name.replace(chr(47), chr(45))}.hf.space"
-        logger.info("Connecting to Space: %s", space_url)
+        # Client accepts the plain "owner/repo" Space id and resolves the URL
+        # itself; building the *.hf.space hostname by hand is both unnecessary
+        # and easy to get wrong.
+        logger.info("Connecting to Space: %s", space_name)
 
         try:
-            client = Client(space_url, hf_token=resolved_token)
+            client = Client(space_name, hf_token=resolved_token)
         except Exception as exc:
             raise RuntimeError(
                 f"Failed to connect to Space {space_name!r}: {exc}. "
@@ -828,34 +828,35 @@ class CulturalRepE:
         concept_str = ", ".join(concept_ids)
         logger.info("Submitting extraction job: concepts=%s, model=%s", concept_str, model_name)
 
+        # Inputs are positional in gradio_client; the endpoint is the
+        # api_name declared on the extract button in space_config/app.py.
         try:
             job = client.submit(
-                fn_index=0,
-                inputs=[concept_str, model_name, dataset_name],
+                concept_str,
+                model_name,
+                dataset_name,
+                api_name="/extract",
             )
         except Exception as exc:
             raise RuntimeError(f"Failed to submit extraction job: {exc}") from exc
 
-        # Poll for completion
+        # result() blocks until the job finishes and raises on failure, which
+        # is both simpler and more correct than polling job.status(): the
+        # status enum has no "SUCCESS" member, so string comparisons against
+        # it never match.
         max_wait = 600
-        poll_interval = 5
-        elapsed = 0
-        while elapsed < max_wait:
-            status = job.status()
-            code = getattr(status, "code", None)
-            if code == "SUCCESS":
-                logger.info("Space extraction completed: %s", job.result())
-                break
-            if code == "ERROR":
-                raise RuntimeError(f"Space extraction job failed: {status}")
-            logger.debug("Waiting for Space job... (%ds, status=%s)", elapsed, code)
-            time.sleep(poll_interval)
-            elapsed += poll_interval
-        else:
+        try:
+            outcome = job.result(timeout=max_wait)
+        except Exception as exc:
             raise RuntimeError(
-                f"Space extraction timed out after {max_wait}s. "
-                "The Space may be cold-starting or the model is too large."
-            )
+                f"Space extraction failed or timed out after {max_wait}s: {exc}. "
+                "The Space may be cold-starting or the model may be too large."
+            ) from exc
+
+        outcome_text = str(outcome)
+        logger.info("Space extraction completed: %s", outcome_text)
+        if outcome_text.lstrip().startswith("❌"):
+            raise RuntimeError(f"Space extraction reported an error: {outcome_text}")
 
         # Load results from HF Dataset
         loaded = self.load_vectors_from_hf(
@@ -909,13 +910,24 @@ class CulturalRepE:
 
         # 1. Extraction phase
         _logger.info("Phase 1: Vector extraction")
-        if not self.concept_vectors:
+        missing = [cid for cid in concept_ids if cid not in self.concept_vectors]
+        if missing:
             if self.model is not None:
-                for cid in concept_ids:
-                    if cid not in self.concept_vectors:
-                        self.extract_vector(cid)
+                for cid in missing:
+                    self.extract_vector(cid)
             else:
-                self.extract_via_space(concept_ids=concept_ids)
+                self.extract_via_space(concept_ids=missing)
+
+        # Probing, steering and baseline measurement all need forward passes,
+        # which the Space cannot serve. Refuse rather than fabricate: a results
+        # file full of invented numbers is worse than no results file, because
+        # nothing downstream can tell the difference.
+        if self.model is None:
+            raise RuntimeError(
+                "run_full_experiment() requires a locally loaded model for the "
+                "probing, steering and baseline phases. Call load_model() first "
+                "(vectors alone can come from the Space, measurements cannot)."
+            )
 
         vectors_out = {}
         for cid, vec in self.concept_vectors.items():
@@ -928,23 +940,18 @@ class CulturalRepE:
         layer_sweep: dict[str, list[dict[str, Any]]] = {}
         best_layers: dict[str, int] = {}
 
-        if self.model is not None:
-            from src.utils.probes import best_layer, sweep_layers_with_probe
+        from src.utils.probes import best_layer, sweep_layers_with_probe
 
-            for cid in concept_ids:
-                if cid not in self.concept_vectors:
-                    _logger.warning("Skipping layer sweep for %s: no vector", cid)
-                    continue
-                results = sweep_layers_with_probe(self, cid)
-                layer_sweep[cid] = [
-                    {"layer": r.layer, "accuracy": r.accuracy, "chance": r.chance}
-                    for r in results.values()
-                ]
-                best_layers[cid] = best_layer(results)
-        else:
-            for cid in concept_ids:
-                layer_sweep[cid] = [{"layer": i, "accuracy": 0.5, "chance": 0.5} for i in range(32)]
-                best_layers[cid] = 16
+        for cid in concept_ids:
+            if cid not in self.concept_vectors:
+                _logger.warning("Skipping layer sweep for %s: no vector", cid)
+                continue
+            results = sweep_layers_with_probe(self, cid)
+            layer_sweep[cid] = [
+                {"layer": r.layer, "accuracy": r.accuracy, "chance": r.chance}
+                for r in results.values()
+            ]
+            best_layers[cid] = best_layer(results)
 
         # Save layer sweep CSV
         with open(root / "layer_sweep.csv", "w", newline="") as f:
@@ -967,29 +974,22 @@ class CulturalRepE:
         _logger.info("Phase 3: Steering sweep")
         steering_sweep: dict[str, list[dict[str, Any]]] = {}
 
-        if self.model is not None:
-            from src.utils.evaluation import evaluate_steering
+        from src.utils.evaluation import evaluate_steering
 
-            for cid in concept_ids:
-                if cid not in self.concept_vectors:
-                    continue
-                steering_results = evaluate_steering(
-                    self,
-                    cid,
-                    EVALUATION_PROMPTS,
-                    strengths=[-2.0, -1.0, 0.0, 1.0, 2.0],
-                    measure_effect=True,
-                )
-                steering_sweep[cid] = [
-                    {"strength": s, "effect_kl": r.effect_kl, "mean_loss": r.mean_loss}
-                    for s, r in steering_results.items()
-                ]
-        else:
-            for cid in concept_ids:
-                steering_sweep[cid] = [
-                    {"strength": s, "effect_kl": abs(s) * 0.1, "mean_loss": 2.0 + s * s * 0.1}
-                    for s in [-2.0, -1.0, 0.0, 1.0, 2.0]
-                ]
+        for cid in concept_ids:
+            if cid not in self.concept_vectors:
+                continue
+            steering_results = evaluate_steering(
+                self,
+                cid,
+                EVALUATION_PROMPTS,
+                strengths=[-2.0, -1.0, 0.0, 1.0, 2.0],
+                measure_effect=True,
+            )
+            steering_sweep[cid] = [
+                {"strength": s, "effect_kl": r.effect_kl, "mean_loss": r.mean_loss}
+                for s, r in steering_results.items()
+            ]
 
         # Save steering sweep CSV
         with open(root / "steering_sweep.csv", "w", newline="") as f:
@@ -1012,36 +1012,19 @@ class CulturalRepE:
         _logger.info("Phase 4: Baseline comparison")
         baseline_comparison: dict[str, list[dict[str, Any]]] = {}
 
-        if self.model is not None:
-            from src.utils.baselines import compare_steering_vs_prompting
+        from src.utils.baselines import compare_steering_vs_prompting
 
-            for cid in concept_ids:
-                if cid not in self.concept_vectors:
-                    continue
-                concept_name = CONCEPT_NAMES.get(cid, cid)
-                comp = compare_steering_vs_prompting(
-                    self,
-                    cid,
-                    concept_name,
-                    EVALUATION_PROMPTS,
-                )
-                baseline_comparison[cid] = comp.rows()
-        else:
-            for cid in concept_ids:
-                baseline_comparison[cid] = [
-                    {
-                        "condition": "steering",
-                        "mean_continuation_loss": 2.0,
-                        "extra_input_tokens": 0,
-                        "n_generations": 5,
-                    },
-                    {
-                        "condition": "prompt:direct_en",
-                        "mean_continuation_loss": 2.1,
-                        "extra_input_tokens": 8,
-                        "n_generations": 5,
-                    },
-                ]
+        for cid in concept_ids:
+            if cid not in self.concept_vectors:
+                continue
+            concept_name = CONCEPT_NAMES.get(cid, cid)
+            comp = compare_steering_vs_prompting(
+                self,
+                cid,
+                concept_name,
+                EVALUATION_PROMPTS,
+            )
+            baseline_comparison[cid] = comp.rows()
 
         # Save baseline comparison CSV
         with open(root / "baseline_comparison.csv", "w", newline="") as f:
@@ -1108,6 +1091,15 @@ class CulturalRepE:
             Path to the generated Markdown file.
         """
         lines: list[str] = ["# Thaqafa-RepE Results Summary", ""]
+
+        # Provenance marker. run_full_experiment refuses to run without a live
+        # model, so a summary carrying this line is guaranteed to come from
+        # real forward passes; inject_results_to_tex.py refuses summaries
+        # without it.
+        lines.append(f"<!-- provenance: live-model-run model={self.model_name} -->")
+        lines.append("")
+        lines.append(f"Source model: `{self.model_name}`")
+        lines.append("")
 
         lines.append("## 1. Best Layers by Concept")
         lines.append("")

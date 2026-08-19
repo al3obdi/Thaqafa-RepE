@@ -32,13 +32,29 @@ output_path = sys.argv[2]
 with open(input_path, "r") as f:
     content = f.read()
 
-# 1. Replace author block
-content = re.sub(
-    r"\\author\{[^}]*\}",
-    r"\\author{Anonymous Author(s)\\\\ \\\\ Submitted for double-blind review}",
-    content,
-    flags=re.DOTALL,
-)
+# 1. Replace the author block. The block contains nested braces
+# (\texttt{...}), so a [^}]* regex stops at the first closing brace and
+# leaves a stray "}" behind, breaking the LaTeX. Walk the braces instead.
+def replace_author_block(text: str) -> str:
+    marker = "\\author{"
+    start = text.find(marker)
+    if start == -1:
+        return text
+    depth = 0
+    i = start + len(marker) - 1  # position of the opening brace
+    for i in range(start + len(marker) - 1, len(text)):
+        if text[i] == "{":
+            depth += 1
+        elif text[i] == "}":
+            depth -= 1
+            if depth == 0:
+                break
+    replacement = (
+        "\\author{Anonymous Author(s)\\\\ \\\\ Submitted for double-blind review}"
+    )
+    return text[:start] + replacement + text[i + 1:]
+
+content = replace_author_block(content)
 
 # 2. Remove GitHub URLs
 content = content.replace(
@@ -93,4 +109,23 @@ if [ "$ISSUES" -eq 0 ]; then
 else
     echo "  FAIL: $ISSUES identifying pattern(s) found!" >&2
     exit 1
+fi
+
+# The identity grep alone cannot tell whether the rewrite broke the LaTeX,
+# so compile the anonymized file when a TeX toolchain is available.
+if command -v pdflatex >/dev/null 2>&1; then
+    echo ""
+    echo "=== Compile check ==="
+    OUTDIR="$(dirname "$OUTPUT")"
+    BASENAME="$(basename "$OUTPUT" .tex)"
+    if (cd "$OUTDIR" && pdflatex -interaction=nonstopmode -halt-on-error \
+            "$BASENAME.tex" >/dev/null 2>&1); then
+        echo "  PASS: $BASENAME.tex compiles."
+        rm -f "$OUTDIR/$BASENAME".{aux,log,out,pdf}
+    else
+        echo "  FAIL: $BASENAME.tex does not compile. Inspect $OUTDIR/$BASENAME.log" >&2
+        exit 1
+    fi
+else
+    echo "  NOTE: pdflatex not found; skipping the compile check."
 fi

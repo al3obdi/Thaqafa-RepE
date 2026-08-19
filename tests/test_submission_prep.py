@@ -116,6 +116,7 @@ down, and whether steering beats the persona prompting baseline.}
 def sample_tex_with_author(tmp_path: Path) -> Path:
     """Create a sample .tex file with author info for anonymization tests."""
     tex = r"""\documentclass[11pt]{article}
+\usepackage{url}
 \title{Thaqafa-RepE: Representation Engineering}
 \author{
   Abdullah Almohammedi \\
@@ -132,6 +133,36 @@ Contact: al3obdi@example.com
     path = tmp_path / "main_with_author.tex"
     path.write_text(tex)
     return path
+
+
+# ---------------------------------------------------------------------------
+# Tests: Provenance guard
+# ---------------------------------------------------------------------------
+
+
+class TestProvenanceGuard:
+    """The injector must refuse summaries that lack a live-run marker."""
+
+    def test_summary_without_marker_is_refused(self, sample_results_md: Path) -> None:
+        """A results file with no provenance marker exits with an error."""
+        from scripts.inject_results_to_tex import check_provenance
+
+        with pytest.raises(SystemExit, match="provenance"):
+            check_provenance(sample_results_md.read_text())
+
+    def test_summary_with_marker_is_accepted(self) -> None:
+        """A results file stamped by run_full_experiment passes."""
+        from scripts.inject_results_to_tex import check_provenance
+
+        check_provenance("<!-- provenance: live-model-run model=test-model -->\n# Summary\n")
+
+    def test_run_full_experiment_report_carries_the_marker(self) -> None:
+        """The marker the guard requires is the one the engine writes."""
+        import src.models.rep_engine as rep_engine
+        from scripts.inject_results_to_tex import PROVENANCE_MARKER
+
+        source = Path(rep_engine.__file__).read_text()
+        assert PROVENANCE_MARKER in source
 
 
 # ---------------------------------------------------------------------------
@@ -415,6 +446,9 @@ class TestAbstractWordCount:
         if not match:
             pytest.skip("No abstract found in main.tex")
 
+        # pre-commit's isolated mypy has no pytest stubs, so skip() is not
+        # known to be NoReturn there; narrow explicitly.
+        assert match is not None
         abstract_text = match.group(1)
         # Remove LaTeX commands for word counting
         clean = re_mod.sub(r"\\[a-zA-Z]+\{[^}]*\}", "", abstract_text)

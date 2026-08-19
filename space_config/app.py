@@ -13,7 +13,7 @@ from __future__ import annotations
 
 import json
 import os
-import time
+import re
 import traceback
 from datetime import datetime, timezone
 from pathlib import Path
@@ -33,10 +33,40 @@ import torch
 DEFAULT_DATASET = "al3obdi/thaqafa-repe-vectors"
 DEFAULT_CONCEPTS = "wasta_001, muruah_001, diyafa_001"
 
+# The Space deploys as a standalone app.py, so the concept exemplars are
+# inlined here. Keep in sync with data/datasets/cultural_concepts.jsonl.
+CONCEPT_EXAMPLES: dict[str, list[str]] = {
+    "wasta_001": [
+        "حصل على الوظيفة بالواسطة",
+        "He got the job through wasta",
+    ],
+    "muruah_001": [
+        "أظهر مروءة في حماية الضعفاء",
+        "He showed muru'ah by protecting the weak",
+    ],
+    "diyafa_001": [
+        "أكرم ضيافته لمدة ثلاثة أيام",
+        "He hosted him generously for three days",
+    ],
+}
+
+# Culturally neutral sentences used as the negative side of the contrast.
+# Mirrors src/data/contrastive.py.
+NEUTRAL_PROMPTS: list[str] = [
+    "الطقس جميل اليوم.",
+    "The weather is nice today.",
+    "ذهبت إلى المتجر لشراء بعض الخبز.",
+    "I went to the store to buy some bread.",
+]
+
+# Only models in TransformerLens's supported registry can be loaded with
+# HookedTransformer.from_pretrained. Arabic-centric models (Jais, ALLaM) are
+# not in that registry today; loading them needs the TransformerBridge path
+# and is future work. gpt2 is kept as a fast smoke-test option.
 MODEL_CHOICES = [
     "meta-llama/Meta-Llama-3-8B-Instruct",
-    "allam-ai/ALLaM-1-7b-Instruct",
-    "core42/jais-13b-chat",
+    "Qwen/Qwen2.5-7B-Instruct",
+    "gpt2",
 ]
 
 
@@ -61,6 +91,19 @@ def _resolve_token(token: str | None = None) -> str:
     if not t:
         raise ValueError("No HF_TOKEN set. Add it as a Space secret.")
     return t
+
+
+def _sanitize_config_name(model_name: str) -> str:
+    """Turn a HF model id into a valid dataset config name.
+
+    Args:
+        model_name: e.g. ``"meta-llama/Meta-Llama-3-8B-Instruct"``.
+
+    Returns:
+        A lowercase, dash-separated identifier, e.g.
+        ``"meta-llama--meta-llama-3-8b-instruct"``.
+    """
+    return re.sub(r"[^a-z0-9-]+", "-", model_name.lower().replace("/", "--")).strip("-")
 
 
 def _tensor_to_list(tensor: torch.Tensor) -> list[float]:
@@ -108,8 +151,11 @@ def _save_to_hf(
             }
         )
     ds = Dataset.from_list(rows)
-    ds.push_to_hub(dataset_name, token=token, private=True)
-    return f"https://huggingface.co/datasets/{dataset_name}"
+    # One config per model: push_to_hub replaces a config wholesale, so
+    # without this, extracting from model B would erase model A's vectors.
+    config = _sanitize_config_name(model_name)
+    ds.push_to_hub(dataset_name, config_name=config, token=token, private=True)
+    return f"https://huggingface.co/datasets/{dataset_name} (config: {config})"
 
 
 def _load_from_hf(dataset_name: str) -> dict[str, torch.Tensor]:
@@ -183,22 +229,49 @@ def extract_vectors(
     layer = n_layers // 2
     hook = f"blocks.{layer}.hook_resid_post"
 
-    progress(0.3, desc="Extracting vectors...")
-    results: dict[str, torch.Tensor] = {}
-    layers_out: dict[str, int] = {}
-    for i, cid in enumerate(ids):
-        progress(0.3 + 0.5 * (i + 1) / len(ids), desc=f"Extracting {cid}...")
-        try:
-            with torch.no_grad():
-                tokens = model.to_tokens([f"Concept: {cid}"])
+    def _mean_activation(prompts: list[str]) -> torch.Tensor:
+        """Mean last-layer-hook activation over prompts, one prompt at a time.
+
+        Prompts run individually, so no padding enters the mean and every
+        prompt contributes equally regardless of length. Accumulation is in
+        float32, matching src/models/rep_engine.py.
+        """
+        means = []
+        with torch.no_grad():
+            for prompt in prompts:
+                tokens = model.to_tokens([prompt])
                 _, cache = model.run_with_cache(
                     tokens,
                     names_filter=hook,
                     stop_at_layer=layer + 1,
                     return_type=None,
                 )
-                vec = cache[hook][0].mean(dim=0).to(torch.float32).cpu()
-                vec = vec / vec.norm()
+                means.append(cache[hook][0].to(torch.float32).mean(dim=0).cpu())
+        return torch.stack(means).mean(dim=0)
+
+    progress(0.25, desc="Computing neutral baseline...")
+    try:
+        neutral_mean = _mean_activation(NEUTRAL_PROMPTS)
+    except Exception as exc:
+        return f"❌ Baseline computation failed: {exc}"
+
+    progress(0.35, desc="Extracting vectors...")
+    results: dict[str, torch.Tensor] = {}
+    layers_out: dict[str, int] = {}
+    for i, cid in enumerate(ids):
+        progress(0.35 + 0.45 * (i + 1) / len(ids), desc=f"Extracting {cid}...")
+        examples = CONCEPT_EXAMPLES.get(cid)
+        if not examples:
+            return (
+                f"❌ Unknown concept {cid!r}. Known concepts: "
+                f"{', '.join(sorted(CONCEPT_EXAMPLES))}"
+            )
+        try:
+            # Contrastive mean-difference recipe, matching the paper's Eq. 1:
+            # v = mean(concept exemplars) - mean(neutral prompts), L2-normed.
+            positive_mean = _mean_activation(examples)
+            vec = positive_mean - neutral_mean
+            vec = vec / vec.norm()
             results[cid] = vec
             layers_out[cid] = layer
         except Exception as exc:
@@ -323,6 +396,7 @@ with demo:
         extract_vectors,
         inputs=[concept_input, model_dropdown, dataset_input],
         outputs=extract_output,
+        api_name="extract",
     )
     preview_btn.click(
         preview_results,
@@ -341,8 +415,5 @@ with demo:
     )
 
 demo.queue(default_concurrency_limit=1)
+# launch() blocks in script mode; Spaces keeps the process alive.
 demo.launch()
-
-# Keepalive loop — prevents the process from exiting on HF Spaces infrastructure
-while True:
-    time.sleep(3600)

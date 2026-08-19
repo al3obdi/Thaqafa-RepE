@@ -205,61 +205,166 @@ class TestCSVSchema:
 
 
 class TestRunFullExperiment:
-    """Test the run_full_experiment method with mocked dependencies."""
+    """The corrected contract: measure with a real model, or refuse."""
 
-    def test_run_full_experiment_no_model(
+    @staticmethod
+    def _measured_engine(
+        mock_vectors: dict[str, torch.Tensor],
+        mock_probe_results: dict[int, Any],
+        mock_steering_results: dict[float, Any],
+        mock_comparison_result: Any,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> Any:
+        """Build an engine with a fake model and mocked measurement utils."""
+        from src.models.rep_engine import CulturalRepE
+
+        engine = CulturalRepE(model_name="test-model")
+        engine.model = MagicMock()
+        engine.concept_vectors = dict(mock_vectors)
+
+        monkeypatch.setattr(
+            "src.utils.probes.sweep_layers_with_probe",
+            lambda eng, cid: mock_probe_results,
+        )
+        monkeypatch.setattr(
+            "src.utils.probes.best_layer",
+            lambda results: max(results, key=lambda k: results[k].accuracy),
+        )
+        monkeypatch.setattr(
+            "src.utils.evaluation.evaluate_steering",
+            lambda eng, cid, prompts, **kw: mock_steering_results,
+        )
+        monkeypatch.setattr(
+            "src.utils.baselines.compare_steering_vs_prompting",
+            lambda eng, cid, name, prompts, **kw: mock_comparison_result,
+        )
+        return engine
+
+    def test_no_model_refuses_instead_of_fabricating(
         self,
         mock_vectors: dict[str, torch.Tensor],
         tmp_output_dir: Path,
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
-        """run_full_experiment produces all outputs when model is not loaded."""
+        """Without a local model the measurement phases must raise, not invent.
+
+        An earlier revision wrote placeholder accuracies and losses into the
+        results files when no model was loaded. Those numbers were
+        indistinguishable from real ones downstream, so the contract is now:
+        vectors may come from the Space, measurements may not.
+        """
         from src.models.rep_engine import CulturalRepE
 
         engine = CulturalRepE(model_name="test-model")
 
-        # Mock extract_via_space to populate vectors
         def mock_extract(self_inner: Any, concept_ids: list[str]) -> dict[str, torch.Tensor]:
             self_inner.concept_vectors = dict(mock_vectors)
             return mock_vectors
 
         monkeypatch.setattr(CulturalRepE, "extract_via_space", mock_extract)
+
+        with pytest.raises(RuntimeError, match="locally loaded model"):
+            engine.run_full_experiment(
+                concept_ids=["wasta_001"],
+                output_dir=str(tmp_output_dir),
+            )
+
+        # No results artefacts may exist after the refusal.
+        assert not (tmp_output_dir / "layer_sweep.csv").exists()
+        assert not (tmp_output_dir / "steering_sweep.csv").exists()
+        assert not (tmp_output_dir / "RESULTS_SUMMARY.md").exists()
+
+    def test_missing_concepts_are_extracted_even_with_a_warm_cache(
+        self,
+        mock_vectors: dict[str, torch.Tensor],
+        mock_probe_results: dict[int, Any],
+        mock_steering_results: dict[float, Any],
+        mock_comparison_result: Any,
+        tmp_output_dir: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """A partially warm vector cache must not suppress extraction.
+
+        An earlier revision gated the whole extraction phase on the cache
+        being empty, so one cached vector silently starved every other
+        requested concept.
+        """
+        engine = self._measured_engine(
+            mock_vectors,
+            mock_probe_results,
+            mock_steering_results,
+            mock_comparison_result,
+            monkeypatch,
+        )
+        # Warm cache for one concept only; drop the others.
+        engine.concept_vectors = {"wasta_001": mock_vectors["wasta_001"]}
+        extracted: list[str] = []
+
+        def fake_extract(self_inner: Any, cid: str, **kw: Any) -> torch.Tensor:
+            extracted.append(cid)
+            self_inner.concept_vectors[cid] = mock_vectors[cid]
+            return mock_vectors[cid]
+
+        monkeypatch.setattr(type(engine), "extract_vector", fake_extract)
+
+        engine.run_full_experiment(
+            concept_ids=["wasta_001", "diyafa_001"],
+            output_dir=str(tmp_output_dir),
+        )
+
+        assert extracted == ["diyafa_001"]
+
+    def test_all_artifacts_written_with_a_model(
+        self,
+        mock_vectors: dict[str, torch.Tensor],
+        mock_probe_results: dict[int, Any],
+        mock_steering_results: dict[float, Any],
+        mock_comparison_result: Any,
+        tmp_output_dir: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """All output files exist after a measured run."""
+        engine = self._measured_engine(
+            mock_vectors,
+            mock_probe_results,
+            mock_steering_results,
+            mock_comparison_result,
+            monkeypatch,
+        )
 
         results = engine.run_full_experiment(
             concept_ids=["wasta_001", "muruah_001", "diyafa_001"],
             output_dir=str(tmp_output_dir),
         )
 
-        # Check all outputs exist
-        assert (tmp_output_dir / "vectors.json").exists()
-        assert (tmp_output_dir / "layer_sweep.csv").exists()
-        assert (tmp_output_dir / "steering_sweep.csv").exists()
-        assert (tmp_output_dir / "baseline_comparison.csv").exists()
-        assert (tmp_output_dir / "RESULTS_SUMMARY.md").exists()
-
-        # Check return dict
+        for name in (
+            "vectors.json",
+            "layer_sweep.csv",
+            "steering_sweep.csv",
+            "baseline_comparison.csv",
+            "RESULTS_SUMMARY.md",
+        ):
+            assert (tmp_output_dir / name).exists(), name
         assert results["vectors_saved"] is True
-        assert "best_layers" in results
-        assert "layer_sweep" in results
-        assert "steering_sweep" in results
-        assert "baseline_comparison" in results
+        assert set(results["best_layers"]) == {"wasta_001", "muruah_001", "diyafa_001"}
 
     def test_vectors_json_structure(
         self,
         mock_vectors: dict[str, torch.Tensor],
+        mock_probe_results: dict[int, Any],
+        mock_steering_results: dict[float, Any],
+        mock_comparison_result: Any,
         tmp_output_dir: Path,
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         """vectors.json contains the extracted vectors as lists."""
-        from src.models.rep_engine import CulturalRepE
-
-        engine = CulturalRepE(model_name="test-model")
-
-        def mock_extract(self_inner: Any, concept_ids: list[str]) -> dict[str, torch.Tensor]:
-            self_inner.concept_vectors = dict(mock_vectors)
-            return mock_vectors
-
-        monkeypatch.setattr(CulturalRepE, "extract_via_space", mock_extract)
+        engine = self._measured_engine(
+            mock_vectors,
+            mock_probe_results,
+            mock_steering_results,
+            mock_comparison_result,
+            monkeypatch,
+        )
 
         engine.run_full_experiment(
             concept_ids=["wasta_001"],
@@ -275,19 +380,20 @@ class TestRunFullExperiment:
     def test_layer_sweep_csv_content(
         self,
         mock_vectors: dict[str, torch.Tensor],
+        mock_probe_results: dict[int, Any],
+        mock_steering_results: dict[float, Any],
+        mock_comparison_result: Any,
         tmp_output_dir: Path,
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
-        """layer_sweep.csv has rows for each concept and layer."""
-        from src.models.rep_engine import CulturalRepE
-
-        engine = CulturalRepE(model_name="test-model")
-
-        def mock_extract(self_inner: Any, concept_ids: list[str]) -> dict[str, torch.Tensor]:
-            self_inner.concept_vectors = dict(mock_vectors)
-            return mock_vectors
-
-        monkeypatch.setattr(CulturalRepE, "extract_via_space", mock_extract)
+        """layer_sweep.csv carries one row per probed layer."""
+        engine = self._measured_engine(
+            mock_vectors,
+            mock_probe_results,
+            mock_steering_results,
+            mock_comparison_result,
+            monkeypatch,
+        )
 
         engine.run_full_experiment(
             concept_ids=["wasta_001"],
@@ -295,27 +401,27 @@ class TestRunFullExperiment:
         )
 
         with open(tmp_output_dir / "layer_sweep.csv") as f:
-            reader = csv.DictReader(f)
-            rows = list(reader)
-        assert len(rows) == 32  # placeholder data has 32 layers
+            rows = list(csv.DictReader(f))
+        assert len(rows) == len(mock_probe_results)
         assert rows[0]["concept_id"] == "wasta_001"
 
     def test_steering_sweep_csv_content(
         self,
         mock_vectors: dict[str, torch.Tensor],
+        mock_probe_results: dict[int, Any],
+        mock_steering_results: dict[float, Any],
+        mock_comparison_result: Any,
         tmp_output_dir: Path,
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
-        """steering_sweep.csv has rows for each strength."""
-        from src.models.rep_engine import CulturalRepE
-
-        engine = CulturalRepE(model_name="test-model")
-
-        def mock_extract(self_inner: Any, concept_ids: list[str]) -> dict[str, torch.Tensor]:
-            self_inner.concept_vectors = dict(mock_vectors)
-            return mock_vectors
-
-        monkeypatch.setattr(CulturalRepE, "extract_via_space", mock_extract)
+        """steering_sweep.csv has one row per strength with both metrics."""
+        engine = self._measured_engine(
+            mock_vectors,
+            mock_probe_results,
+            mock_steering_results,
+            mock_comparison_result,
+            monkeypatch,
+        )
 
         engine.run_full_experiment(
             concept_ids=["wasta_001"],
@@ -323,28 +429,28 @@ class TestRunFullExperiment:
         )
 
         with open(tmp_output_dir / "steering_sweep.csv") as f:
-            reader = csv.DictReader(f)
-            rows = list(reader)
-        assert len(rows) == 5  # 5 strengths
+            rows = list(csv.DictReader(f))
+        assert len(rows) == 5
         assert "effect_kl" in rows[0]
         assert "mean_loss" in rows[0]
 
-    def test_results_summary_markdown(
+    def test_results_summary_markdown_sections_and_provenance(
         self,
         mock_vectors: dict[str, torch.Tensor],
+        mock_probe_results: dict[int, Any],
+        mock_steering_results: dict[float, Any],
+        mock_comparison_result: Any,
         tmp_output_dir: Path,
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
-        """RESULTS_SUMMARY.md has expected sections."""
-        from src.models.rep_engine import CulturalRepE
-
-        engine = CulturalRepE(model_name="test-model")
-
-        def mock_extract(self_inner: Any, concept_ids: list[str]) -> dict[str, torch.Tensor]:
-            self_inner.concept_vectors = dict(mock_vectors)
-            return mock_vectors
-
-        monkeypatch.setattr(CulturalRepE, "extract_via_space", mock_extract)
+        """RESULTS_SUMMARY.md has all sections plus the provenance marker."""
+        engine = self._measured_engine(
+            mock_vectors,
+            mock_probe_results,
+            mock_steering_results,
+            mock_comparison_result,
+            monkeypatch,
+        )
 
         engine.run_full_experiment(
             concept_ids=["wasta_001", "diyafa_001"],
@@ -352,10 +458,10 @@ class TestRunFullExperiment:
         )
 
         md = (tmp_output_dir / "RESULTS_SUMMARY.md").read_text()
+        assert "<!-- provenance: live-model-run" in md
         assert "Best Layers" in md
         assert "Steering Sweep" in md
         assert "Baseline Comparison" in md
-        assert "LaTeX" in md or "latex" in md.lower()
         assert "Summary Statistics" in md
 
 
