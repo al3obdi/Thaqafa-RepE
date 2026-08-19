@@ -1,0 +1,79 @@
+name: Weekly real-model smoke test
+
+# The regular suite runs against randomly initialised tiny models, which
+# exercises every code path but never validates against real pretrained
+# weights. This job downloads gpt2 (~500 MB) once a week and runs the full
+# extract -> probe -> steer pipeline on it. It is deliberately NOT a PR gate:
+# it protects against drift in transformer-lens/transformers, not against
+# repository changes.
+
+on:
+  schedule:
+    - cron: "0 5 * * 1"  # Mondays 05:00 UTC
+  workflow_dispatch:
+
+jobs:
+  real-model:
+    name: Pipeline on pretrained gpt2
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install Poetry
+        run: pipx install poetry==2.3.3
+
+      - name: Install dependencies
+        run: poetry install --no-interaction --no-ansi
+
+      - name: Cache HF models
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/huggingface
+          key: hf-gpt2-v1
+
+      - name: Run pipeline on gpt2
+        run: |
+          poetry run python - <<'PY'
+          """End-to-end smoke test on real pretrained weights."""
+          import torch
+
+          from src.models.rep_engine import CulturalRepE
+          from src.utils.evaluation import evaluate_steering
+          from src.utils.probes import best_layer, sweep_layers_with_probe
+
+          engine = CulturalRepE(model_name="gpt2", device="cpu", dtype="float32")
+          engine.load_model()
+
+          vector = engine.extract_vector("diyafa_001")
+          norm = float(torch.linalg.vector_norm(vector))
+          assert abs(norm - 1.0) < 1e-4, f"vector norm {norm} != 1"
+
+          results = sweep_layers_with_probe(engine, "diyafa_001", layers=[3, 6, 9])
+          layer = best_layer(results)
+          print(f"best probe layer: {layer}")
+          for probed, r in results.items():
+              print(f"  layer {probed}: acc={r.accuracy:.3f} chance={r.chance:.3f}")
+
+          sweep = evaluate_steering(
+              engine,
+              "diyafa_001",
+              ["A guest arrives at your home unexpectedly."],
+              strengths=[0.0, 2.0],
+              max_new_tokens=8,
+              measure_effect=True,
+          )
+          zero, steered = sweep[0.0], sweep[2.0]
+          assert zero.effect_kl < 1e-6, "zero strength must not move the distribution"
+          assert steered.effect_kl > 0.0, "steering must move the distribution"
+          assert engine.active_hook_names == [], "hooks leaked"
+          print(f"effect at strength 2.0: KL={steered.effect_kl:.4f}")
+          print("real-model smoke test passed")
+          PY

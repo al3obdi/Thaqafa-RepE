@@ -5,6 +5,11 @@ on:
     branches: [main]
   pull_request:
     branches: [main]
+    # "edited" is included because retargeting a stacked PR's base fires only
+    # an edited event; without it, retargeted PRs reach the merge button with
+    # no CI run at all (this happened to PRs #3 and #4).
+    types: [opened, synchronize, reopened, edited]
+  workflow_dispatch:
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -26,7 +31,7 @@ jobs:
           python-version: "3.11"
 
       - name: Install Poetry
-        run: pipx install poetry==1.8.3
+        run: pipx install poetry==2.3.3
 
       - name: Cache Poetry virtualenv
         uses: actions/cache@v4
@@ -44,5 +49,10 @@ jobs:
       - name: Run black (check only)
         run: poetry run black --check .
 
+      - name: Run mypy
+        run: poetry run mypy
+
       - name: Run tests
-        run: poetry run pytest --cov=src --cov-report=term-missing
+        # The coverage floor is a ratchet: raise it as coverage grows, never
+        # lower it to make a PR pass.
+        run: poetry run pytest --cov=src --cov-report=term-missing --cov-fail-under=85
