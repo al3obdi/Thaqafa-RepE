@@ -101,11 +101,30 @@ stream point writes to it instead of reading from it:
 resid_post[layer] ← resid_post[layer] + strength · v
 ```
 
-Because `v` is a unit direction, `strength` is measured in residual stream norms:
-positive amplifies, negative suppresses, and `0.0` reproduces the unsteered model
-exactly — which makes zero a fair baseline measured through the same code path,
-not a separate branch. The offset lands on every sequence position, so the whole
+Because `v` is a unit direction, `strength` is the only magnitude knob: positive
+amplifies, negative suppresses, and `0.0` reproduces the unsteered model exactly
+— which makes zero a fair baseline measured through the same code path, not a
+separate branch. The offset lands on every sequence position, so the whole
 context is nudged rather than only the final token.
+
+**Calibrate the strength.** Residual norms grow steeply with depth (61 → 396
+across GPT-2's twelve layers), so a fixed absolute coefficient is a strong
+intervention early and a negligible one late. Measured on GPT-2 layer 11:
+
+| Mode | Coefficient | Effect (KL) |
+| --- | --- | --- |
+| absolute | 8.0 | 0.0009 |
+| relative | 50% of ‖resid‖ | **0.435** |
+
+```python
+engine.calibrate_layer_norms()                      # measure ‖resid‖ per layer
+with engine.steering("diyafa_001", strength=0.25, strength_mode="relative"):
+    ...                                             # 25% of the layer's norm
+```
+
+Use `strength_mode="relative"` for anything compared across layers or models;
+`evaluate_layer_sets()` already defaults to it, since comparing configurations
+on an absolute grid is not a fair comparison.
 
 Hooks mutate the model until they are removed, and a forgotten hook silently
 steers everything that follows it. `steering()` therefore removes exactly the
