@@ -1,0 +1,35 @@
+{
+  "concept_id": "wasta_001",
+  "relative_strength": 0.2,
+  "steering_effect_kl": 0.7236054301261902,
+  "conditions": {
+    "prompt:neutral": {
+      "A guest arrives at your home unexpectedly.": "A guest arrives at your home unexpectedly.\n\nA guest arrives at your home unexpectedly.\n\nA guest",
+      "You are asked to recommend a friend for a job.": "You are asked to recommend a friend for a job.\n\nYou are asked to recommend a friend for a",
+      "Describe what it means to be a generous host.": "I'm a generous host. I'm a generous host. I'm a generous host. I'm a generous",
+      "A stranger needs help finding direction.": "A stranger needs help finding direction.\n\nA stranger needs help finding direction.\n\nA stranger needs help",
+      "Your cousin asks you to intervene on their behalf.": "You're not going to do it.\n\nYou're not going to do it.\n\nYou're"
+    },
+    "prompt:direct_en": {
+      "A guest arrives at your home unexpectedly.": "You are not sure what to do. You are not sure what to do. You are not sure what to do.",
+      "You are asked to recommend a friend for a job.": "You are asked to recommend a friend for a job. You are asked to recommend a friend for a job. You are",
+      "Describe what it means to be a generous host.": "Describe what it means to be a generous host. Describe what it means to be a generous host. Desc",
+      "A stranger needs help finding direction.": "A stranger needs help finding direction. A stranger needs help finding direction. A stranger needs help finding direction. A stranger",
+      "Your cousin asks you to intervene on their behalf.": "You say, \"I'm not going to do that. I'm not going to do that. I'm not going"
+    },
+    "prompt:persona_en": {
+      "A guest arrives at your home unexpectedly.": "You are not a guest.\n\nYou are not a guest.\n\nYou are not a guest.",
+      "You are asked to recommend a friend for a job.": "You are asked to recommend a friend for a job.\n\nYou are asked to recommend a friend for a",
+      "Describe what it means to be a generous host.": "Describe what it means to be a generous host.\n\nDescribe what it means to be a generous",
+      "A stranger needs help finding direction.": "A stranger needs to be able to find a way to get to the point where he or she can be a",
+      "Your cousin asks you to intervene on their behalf.": "You are not a member of the community.\n\nYou are not a member of the community."
+    },
+    "steering@+0.20": {
+      "A guest arrives at your home unexpectedly.": "A guest is a dream.\n\nA guest is a dream.\n\nA guest is a dream.",
+      "You are asked to recommend a friend for a job.": "You can't.\n\nYou can't.\n\nYou can't.\n\nYou can't.",
+      "Describe what it means to be a generous host.": "I'm a little girl.\n\nI'm a little girl.\n\nI'm a little girl.",
+      "A stranger needs help finding direction.": "I'm not going to tell you.\n\nI'm not going to.\n\nI'm not.",
+      "Your cousin asks you to intervene on their behalf.": "You can't.\n\nYou can't.\n\nYou can't.\n\nYou can."
+    }
+  }
+}
