@@ -1,0 +1,61 @@
+name: Release
+
+# Tags the current main and publishes a GitHub Release. Manual-only: run it
+# from the Actions tab (or the API) with the version to cut. This exists as
+# a workflow because some development environments can push branches but not
+# tags; inside Actions the GITHUB_TOKEN can do both, and every release stays
+# auditable as a workflow run.
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version to release, e.g. v0.1.0 (must not exist yet)"
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Tag and publish
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout main
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Validate version format
+        run: |
+          case "${{ inputs.version }}" in
+            v[0-9]*.[0-9]*.[0-9]*) echo "version ok" ;;
+            *) echo "ERROR: version must look like v0.1.0" >&2; exit 1 ;;
+          esac
+
+      - name: Refuse if the tag already exists
+        run: |
+          if git rev-parse -q --verify "refs/tags/${{ inputs.version }}" >/dev/null; then
+            echo "ERROR: tag ${{ inputs.version }} already exists" >&2
+            exit 1
+          fi
+
+      - name: Create and push the tag
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git tag -a "${{ inputs.version }}" -m "Thaqafa-RepE ${{ inputs.version }}"
+          git push origin "refs/tags/${{ inputs.version }}"
+
+      - name: Publish the GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "${{ inputs.version }}" \
+            --title "Thaqafa-RepE ${{ inputs.version }}" \
+            --generate-notes \
+            --verify-tag
