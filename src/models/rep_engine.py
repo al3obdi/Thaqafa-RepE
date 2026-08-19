@@ -517,8 +517,12 @@ class CulturalRepE:
     # Concept vectors
     # ------------------------------------------------------------------
 
-    def _resolve_examples(self, concept: str, examples: list[str] | None) -> list[str]:
-        """Resolve positive examples for ``concept``.
+    def _resolve_examples(
+        self,
+        concept: str,
+        examples: list[str] | None,
+    ) -> tuple[list[str], list[str] | None]:
+        """Resolve positive examples and curated contrasts for ``concept``.
 
         Args:
             concept: Concept identifier, matched against ``concept_id`` in the
@@ -528,7 +532,10 @@ class CulturalRepE:
                 passing a filtered-to-empty list is told about it.
 
         Returns:
-            The positive prompts.
+            A ``(positives, curated_contrasts)`` pair. The contrasts come from
+            the dataset entry's ``contrast_ar``/``contrast_en`` fields and are
+            ``None`` when the caller supplied explicit examples (the dataset
+            entry is not consulted then) or the entry carries none.
 
         Raises:
             ValueError: If ``examples`` is empty, the concept is unknown, or
@@ -537,7 +544,7 @@ class CulturalRepE:
         if examples is not None:
             if not examples:
                 raise ValueError("at least one example is required to extract a vector")
-            return list(examples)
+            return list(examples), None
 
         concepts = load_concepts(self.dataset_path)
         matches = [entry for entry in concepts if entry.concept_id == concept]
@@ -547,14 +554,21 @@ class CulturalRepE:
                 f"Concept {concept!r} was not found in {self.dataset_path}. Known ids: {known}"
             )
 
-        resolved = matches[0].all_examples
+        entry = matches[0]
+        resolved = entry.all_examples
         if not resolved:
             raise ValueError(
                 f"Concept {concept!r} has no examples in {self.dataset_path}; "
                 "add examples_ar/examples_en or pass examples explicitly."
             )
-        logger.debug("Resolved %d examples for concept %s", len(resolved), concept)
-        return resolved
+        curated = entry.all_contrasts or None
+        logger.debug(
+            "Resolved %d examples and %d curated contrasts for concept %s",
+            len(resolved),
+            len(curated or []),
+            concept,
+        )
+        return resolved, curated
 
     def extract_vector(
         self,
@@ -587,7 +601,8 @@ class CulturalRepE:
             layer: Block to read from. ``None`` selects :attr:`middle_layer`;
                 negative values count back from the end of the stack.
             contrast_examples: Prompts that deliberately lack the concept.
-                Omit to fall back on the generated neutral baseline.
+                Omit to use the dataset entry's curated minimal pairs when it
+                has any, then the generated neutral baseline.
             normalize: Whether to scale the result to unit L2 norm. Disable
                 only when the raw effect magnitude is the object of study.
 
@@ -603,11 +618,17 @@ class CulturalRepE:
         if not concept or not concept.strip():
             raise ValueError("concept must be a non-empty string")
 
-        positive_examples = self._resolve_examples(concept, examples)
+        positive_examples, curated_contrasts = self._resolve_examples(concept, examples)
 
         self._require_model()
         resolved_layer = self._resolve_layer(layer)
-        negative_examples = build_contrast_examples(positive_examples, contrast_examples)
+        # Negative-side priority: explicit argument, then the entry's curated
+        # minimal pairs, then the generated neutral bank. A minimal pair
+        # cancels topic and register, not merely "being an ordinary sentence",
+        # so it yields the cleanest direction when the dataset provides one.
+        negative_examples = build_contrast_examples(
+            positive_examples, contrast_examples or curated_contrasts
+        )
 
         logger.info(
             "Extracting %s at layer %d from %d positive and %d negative prompts",
@@ -656,9 +677,11 @@ class CulturalRepE:
         vectors: dict[str, torch.Tensor] = {}
         for entry in load_concepts(self.dataset_path):
             try:
+                # Passing examples=None routes through the dataset entry, so
+                # curated minimal-pair contrasts are picked up when present.
                 vectors[entry.concept_id] = self.extract_vector(
                     concept=entry.concept_id,
-                    examples=entry.all_examples or None,
+                    examples=None,
                     layer=layer,
                     contrast_examples=contrast_examples,
                     normalize=normalize,

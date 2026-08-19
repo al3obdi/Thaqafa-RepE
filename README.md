@@ -46,9 +46,10 @@ that other under-represented cultures can adapt, not a single benchmark score.
 - **Contrastive concept vector extraction** — read residual stream activations
   at any layer and derive a unit-norm direction per concept via the
   mean-difference recipe (`CulturalRepE.extract_vector`).
-- **Generated neutral baselines** — a deterministic bilingual bank of everyday
-  sentences stands in as the negative side of the contrast until curated
-  minimal pairs exist (`src.data.contrastive`).
+- **Curated minimal-pair contrasts** — every concept ships bilingual
+  contrast sentences in the same frame with the concept absent; extraction
+  and probing prefer them, falling back to a deterministic neutral bank
+  (`contrast_ar`/`contrast_en`, `src.data.contrastive`).
 - **Steered generation** — inject a concept vector at a chosen strength and set
   of layers via TransformerLens forward hooks, with negative strengths for
   suppression (`CulturalRepE.inject_vector`).
@@ -166,8 +167,9 @@ engine = CulturalRepE(
 )
 engine.load_model()
 
-# Examples are loaded from the dataset by concept_id, the layer defaults to the
-# middle of the stack, and the neutral baseline is generated automatically.
+# Examples come from the dataset by concept_id, the layer defaults to the
+# middle of the stack, and the entry's curated minimal-pair contrasts are
+# used as the negative side (neutral bank as fallback).
 vector = engine.extract_vector("diyafa_001")
 
 # Or supply everything explicitly:
@@ -347,7 +349,8 @@ are ignored so that large or licence-restricted corpora never enter git history.
 
 ## Dataset Schema
 
-Each line of `data/datasets/cultural_concepts.jsonl` is one JSON object:
+Each line of `data/datasets/cultural_concepts.jsonl` is one JSON object
+(12 concepts currently; thresholds enforced by `tests/test_dataset_integrity.py`):
 
 | Field | Type | Description |
 | --- | --- | --- |
@@ -356,10 +359,14 @@ Each line of `data/datasets/cultural_concepts.jsonl` is one JSON object:
 | `concept_en` | string | Transliteration and English gloss |
 | `category` | string | `social`, `ethical`, `cultural`, ... |
 | `description` | string | One-sentence definition |
-| `examples_ar` | string[] | Arabic sentences expressing the concept |
-| `examples_en` | string[] | English sentences expressing the concept |
+| `examples_ar` | string[] | Arabic sentences expressing the concept (≥3) |
+| `examples_en` | string[] | English sentences expressing the concept (≥3) |
+| `contrast_ar` | string[] | Arabic minimal pairs: same frame, concept absent (≥2) |
+| `contrast_en` | string[] | English minimal pairs (≥2) |
 | `cultural_context` | string | Where and why the concept matters |
 | `sentiment` | string | `positive`, `negative` or `mixed` |
+| `dialect` | string | Variety of the Arabic exemplars, e.g. `MSA`, `Gulf` |
+| `review_status` | string | `reviewed` or `pending_native_review` |
 
 ## Zero-GPU Strategy
 

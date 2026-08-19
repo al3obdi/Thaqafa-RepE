@@ -500,7 +500,11 @@ class TestExtractVector:
 
         vectors = engine.extract_all_vectors(layer=1)
 
-        assert set(vectors) == {"wasta_001", "muruah_001", "diyafa_001"}
+        from src.data.dataset_builder import load_concepts
+
+        expected = {c.concept_id for c in load_concepts(DATASET_PATH)}
+        assert set(vectors) == expected
+        assert {"wasta_001", "muruah_001", "diyafa_001"} <= expected
         for vector in vectors.values():
             assert torch.linalg.vector_norm(vector).item() == pytest.approx(1.0, abs=1e-5)
 
