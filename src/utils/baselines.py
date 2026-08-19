@@ -377,6 +377,7 @@ def compare_steering_vs_prompting(
     template_names: list[str] | None = None,
     max_new_tokens: int = DEFAULT_MAX_NEW_TOKENS,
     measure_effect: bool = False,
+    strength_mode: str = "absolute",
 ) -> ComparisonResult:
     """Run steering and prompting on the same prompts and collect both outputs.
 
@@ -398,6 +399,9 @@ def compare_steering_vs_prompting(
             included.
         max_new_tokens: Tokens to generate per prompt.
         measure_effect: Whether to also record the steering KL effect size.
+        strength_mode: ``"absolute"`` or ``"relative"``. Must match the mode the
+            steering sweep used, or the row in this table is measured at a
+            different intervention size than the one the sweep reports.
 
     Returns:
         Every condition's generations and fluency, ready to tabulate.
@@ -436,12 +440,18 @@ def compare_steering_vs_prompting(
         strength=strength,
         layers=layers,
         max_new_tokens=max_new_tokens,
+        strength_mode=strength_mode,
     )
     comparison.conditions[steering_result.condition] = steering_result
 
     if measure_effect:
         comparison.steering_effect_kl = measure_steering_effect(
-            engine, concept, prompts, strength=strength, layers=layers
+            engine,
+            concept,
+            prompts,
+            strength=strength,
+            layers=layers,
+            strength_mode=strength_mode,
         )
 
     return comparison
