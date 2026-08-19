@@ -150,6 +150,21 @@ class InjectionHandle:
         self._removed = True
 
 
+CONCEPT_NAMES: dict[str, str] = {
+    "wasta_001": "Wasta (intercession)",
+    "muruah_001": "Muruah (manly virtue)",
+    "diyafa_001": "Diyafa (hospitality)",
+}
+
+EVALUATION_PROMPTS: list[str] = [
+    "A guest arrives at your home unexpectedly.",
+    "You are asked to recommend a friend for a job.",
+    "Describe what it means to be a generous host.",
+    "A stranger needs help finding direction.",
+    "Your cousin asks you to intervene on their behalf.",
+]
+
+
 class CulturalRepE:
     """Extract and inject cultural concept vectors for a causal language model.
 
@@ -651,6 +666,498 @@ class CulturalRepE:
             except ValueError as exc:
                 logger.warning("Skipping concept %s: %s", entry.concept_id, exc)
         return vectors
+
+    def save_vectors_to_hf(
+        self,
+        dataset_name: str = "al3obdi/thaqafa-repe-vectors",
+        token: str | None = None,
+    ) -> str:
+        """Save all extracted concept vectors to a Hugging Face Dataset.
+
+        Delegates to :func:`src.utils.hf_integration.save_vectors_to_hf`, passing
+        the engine's cached vectors, extraction layers, and model name
+        as metadata. The token is resolved from the environment when not
+        provided.
+
+        Args:
+            dataset_name: Target HF dataset repository.
+            token: Hugging Face access token. Defaults to ``HF_TOKEN``.
+
+        Returns:
+            The URL of the updated dataset.
+
+        Raises:
+            ValueError: If no vectors have been extracted yet.
+            MissingTokenError: If no token is available.
+            HFIntegrationError: If the upload fails.
+        """
+        if not self.concept_vectors:
+            raise ValueError("No concept vectors to save. Call extract_vector() first.")
+
+        from src.utils.hf_integration import save_vectors_to_hf as _save
+
+        metadata = {
+            "model_name": self.model_name,
+            "extraction_layers": dict(self.extraction_layers),
+        }
+        return _save(
+            self.concept_vectors,
+            dataset_name=dataset_name,
+            metadata=metadata,
+            token=token,
+        )
+
+    def load_vectors_from_hf(
+        self,
+        dataset_name: str = "al3obdi/thaqafa-repe-vectors",
+        concept_ids: list[str] | None = None,
+        token: str | None = None,
+    ) -> dict[str, torch.Tensor]:
+        """Load vectors from a Hugging Face Dataset into :attr:`concept_vectors`.
+
+        Delegates to :func:`src.utils.hf_integration.load_vectors_from_hf`. Loaded
+        vectors are merged into the engine's cache — existing entries with
+        the same key are overwritten.
+
+        Args:
+            dataset_name: Source HF dataset repository.
+            concept_ids: Optional list of concept IDs to load. ``None``
+                loads everything.
+            token: Hugging Face access token. Defaults to ``HF_TOKEN``.
+
+        Returns:
+            The loaded mapping (also stored in :attr:`concept_vectors`).
+
+        Raises:
+            MissingTokenError: If no token is available.
+            HFIntegrationError: If the download fails.
+        """
+        from src.utils.hf_integration import load_vectors_from_hf as _load
+
+        loaded = _load(dataset_name=dataset_name, concept_ids=concept_ids, token=token)
+        self.concept_vectors.update(loaded)
+        logger.info("Loaded %d vectors from HF into engine cache", len(loaded))
+        return loaded
+
+    def sync_with_space(
+        self,
+        space_name: str = "al3obdi/thaqafa-repe-extraction",
+        token: str | None = None,
+    ) -> dict[str, Any]:
+        """Check the ZeroGPU extraction Space status and sync results.
+
+        Delegates to :func:`src.utils.hf_integration.sync_with_space`.
+
+        Args:
+            space_name: HF Space repository.
+            token: Hugging Face access token. Defaults to ``HF_TOKEN``.
+
+        Returns:
+            A dictionary with Space status information.
+
+        Raises:
+            MissingTokenError: If no token is available.
+            HFIntegrationError: If the API request fails.
+        """
+        from src.utils.hf_integration import sync_with_space as _sync
+
+        return _sync(space_name=space_name, token=token)
+
+    def extract_via_space(
+        self,
+        concept_ids: list[str],
+        model_name: str = "meta-llama/Meta-Llama-3-8B-Instruct",
+        space_name: str = "al3obdi/thaqafa-repe-extraction",
+        dataset_name: str = "al3obdi/thaqafa-repe-vectors",
+        token: str | None = None,
+    ) -> dict[str, torch.Tensor]:
+        """Trigger extraction on the ZeroGPU Space and load results locally.
+
+        This is the high-level automation entry point. It:
+
+        1. Connects to the HF ZeroGPU Space via ``gradio_client``.
+        2. Submits an extraction job for the given concepts and model.
+        3. Polls until the job completes.
+        4. Loads the resulting vectors from the HF Dataset into
+           :attr:`concept_vectors`.
+
+        The local machine never loads the model - all GPU work happens on
+        the Space. This method is safe to call from a CPU-only environment.
+
+        Args:
+            concept_ids: Concept identifiers to extract, e.g.
+                ``["wasta_001", "diyafa_001"]``.
+            model_name: Hugging Face model identifier to extract from.
+            space_name: HF Space repository to connect to.
+            dataset_name: HF dataset to load results from after extraction.
+            token: Hugging Face access token. Defaults to ``HF_TOKEN``.
+
+        Returns:
+            The loaded vectors, also merged into :attr:`concept_vectors`.
+
+        Raises:
+            ImportError: If ``gradio_client`` is not installed.
+            RuntimeError: If the Space is unreachable or the job fails.
+            MissingTokenError: If no token is available.
+        """
+        from src.utils.hf_integration import _resolve_token
+
+        resolved_token = _resolve_token(token)
+
+        try:
+            from gradio_client import Client
+        except ImportError as exc:
+            raise ImportError(
+                "gradio_client is required for Space automation. "
+                "Install it with: pip install gradio_client"
+            ) from exc
+
+        # Client accepts the plain "owner/repo" Space id and resolves the URL
+        # itself; building the *.hf.space hostname by hand is both unnecessary
+        # and easy to get wrong.
+        logger.info("Connecting to Space: %s", space_name)
+
+        try:
+            client = Client(space_name, hf_token=resolved_token)
+        except Exception as exc:
+            raise RuntimeError(
+                f"Failed to connect to Space {space_name!r}: {exc}. "
+                "The Space may be sleeping or in an error state."
+            ) from exc
+
+        concept_str = ", ".join(concept_ids)
+        logger.info("Submitting extraction job: concepts=%s, model=%s", concept_str, model_name)
+
+        # Inputs are positional in gradio_client; the endpoint is the
+        # api_name declared on the extract button in space_config/app.py.
+        try:
+            job = client.submit(
+                concept_str,
+                model_name,
+                dataset_name,
+                api_name="/extract",
+            )
+        except Exception as exc:
+            raise RuntimeError(f"Failed to submit extraction job: {exc}") from exc
+
+        # result() blocks until the job finishes and raises on failure, which
+        # is both simpler and more correct than polling job.status(): the
+        # status enum has no "SUCCESS" member, so string comparisons against
+        # it never match.
+        max_wait = 600
+        try:
+            outcome = job.result(timeout=max_wait)
+        except Exception as exc:
+            raise RuntimeError(
+                f"Space extraction failed or timed out after {max_wait}s: {exc}. "
+                "The Space may be cold-starting or the model may be too large."
+            ) from exc
+
+        outcome_text = str(outcome)
+        logger.info("Space extraction completed: %s", outcome_text)
+        if outcome_text.lstrip().startswith("❌"):
+            raise RuntimeError(f"Space extraction reported an error: {outcome_text}")
+
+        # Load results from HF Dataset
+        loaded = self.load_vectors_from_hf(
+            dataset_name=dataset_name,
+            concept_ids=concept_ids,
+            token=resolved_token,
+        )
+        logger.info("Loaded %d vectors from Space extraction", len(loaded))
+        return loaded
+
+    def run_full_experiment(
+        self,
+        concept_ids: list[str],
+        output_dir: str = "outputs/paper_results",
+    ) -> dict[str, Any]:
+        """Run the full experimental pipeline for the paper.
+
+        Orchestrates extraction, layer sweep, steering sweep, and baseline
+        comparison, writing structured outputs to *output_dir*.
+
+        When the model is loaded locally (GPU), extraction and evaluation run
+        in-process. When the model is not loaded, extraction is delegated to
+        the ZeroGPU Space via :meth:`extract_via_space`.
+
+        Outputs:
+            - ``vectors.json``: Extracted concept vectors.
+            - ``layer_sweep.csv``: Probe accuracy per layer per concept.
+            - ``steering_sweep.csv``: KL and loss per strength per concept.
+            - ``baseline_comparison.csv``: Steering vs prompting.
+            - ``figures/*.png``: Layer sweep and steering sweep plots.
+            - ``RESULTS_SUMMARY.md``: Markdown report with LaTeX snippets.
+
+        Args:
+            concept_ids: Concept identifiers to evaluate.
+            output_dir: Root output directory.
+
+        Returns:
+            A dictionary with keys: ``vectors_saved``, ``layer_sweep``,
+            ``steering_sweep``, ``baseline_comparison``, ``best_layers``,
+            ``markdown_report``.
+        """
+        import csv
+        import json
+        import logging as _logging
+
+        _logger = _logging.getLogger(__name__)
+        root = Path(output_dir)
+        root.mkdir(parents=True, exist_ok=True)
+        (root / "figures").mkdir(exist_ok=True)
+        (root / "generations").mkdir(exist_ok=True)
+
+        # 1. Extraction phase
+        _logger.info("Phase 1: Vector extraction")
+        missing = [cid for cid in concept_ids if cid not in self.concept_vectors]
+        if missing:
+            if self.model is not None:
+                for cid in missing:
+                    self.extract_vector(cid)
+            else:
+                self.extract_via_space(concept_ids=missing)
+
+        # Probing, steering and baseline measurement all need forward passes,
+        # which the Space cannot serve. Refuse rather than fabricate: a results
+        # file full of invented numbers is worse than no results file, because
+        # nothing downstream can tell the difference.
+        if self.model is None:
+            raise RuntimeError(
+                "run_full_experiment() requires a locally loaded model for the "
+                "probing, steering and baseline phases. Call load_model() first "
+                "(vectors alone can come from the Space, measurements cannot)."
+            )
+
+        vectors_out = {}
+        for cid, vec in self.concept_vectors.items():
+            vectors_out[cid] = vec.tolist() if hasattr(vec, "tolist") else list(vec)
+        (root / "vectors.json").write_text(json.dumps(vectors_out, indent=2, ensure_ascii=False))
+        _logger.info("Saved vectors to %s", root / "vectors.json")
+
+        # 2. Layer sweep phase
+        _logger.info("Phase 2: Layer sweep with linear probes")
+        layer_sweep: dict[str, list[dict[str, Any]]] = {}
+        best_layers: dict[str, int] = {}
+
+        from src.utils.probes import best_layer, sweep_layers_with_probe
+
+        for cid in concept_ids:
+            if cid not in self.concept_vectors:
+                _logger.warning("Skipping layer sweep for %s: no vector", cid)
+                continue
+            results = sweep_layers_with_probe(self, cid)
+            layer_sweep[cid] = [
+                {"layer": r.layer, "accuracy": r.accuracy, "chance": r.chance}
+                for r in results.values()
+            ]
+            best_layers[cid] = best_layer(results)
+
+        # Save layer sweep CSV
+        with open(root / "layer_sweep.csv", "w", newline="") as f:
+            writer = csv.DictWriter(
+                f, fieldnames=["concept_id", "layer", "probe_accuracy", "chance_accuracy"]
+            )
+            writer.writeheader()
+            for cid, rows in layer_sweep.items():
+                for row in rows:
+                    writer.writerow(
+                        {
+                            "concept_id": cid,
+                            "layer": row["layer"],
+                            "probe_accuracy": row["accuracy"],
+                            "chance_accuracy": row["chance"],
+                        }
+                    )
+
+        # 3. Steering sweep phase
+        _logger.info("Phase 3: Steering sweep")
+        steering_sweep: dict[str, list[dict[str, Any]]] = {}
+
+        from src.utils.evaluation import evaluate_steering
+
+        for cid in concept_ids:
+            if cid not in self.concept_vectors:
+                continue
+            steering_results = evaluate_steering(
+                self,
+                cid,
+                EVALUATION_PROMPTS,
+                strengths=[-2.0, -1.0, 0.0, 1.0, 2.0],
+                measure_effect=True,
+            )
+            steering_sweep[cid] = [
+                {"strength": s, "effect_kl": r.effect_kl, "mean_loss": r.mean_loss}
+                for s, r in steering_results.items()
+            ]
+
+        # Save steering sweep CSV
+        with open(root / "steering_sweep.csv", "w", newline="") as f:
+            writer = csv.DictWriter(
+                f, fieldnames=["concept_id", "strength", "effect_kl", "mean_loss"]
+            )
+            writer.writeheader()
+            for cid, rows in steering_sweep.items():
+                for row in rows:
+                    writer.writerow(
+                        {
+                            "concept_id": cid,
+                            "strength": row["strength"],
+                            "effect_kl": row["effect_kl"],
+                            "mean_loss": row["mean_loss"],
+                        }
+                    )
+
+        # 4. Baseline comparison phase
+        _logger.info("Phase 4: Baseline comparison")
+        baseline_comparison: dict[str, list[dict[str, Any]]] = {}
+
+        from src.utils.baselines import compare_steering_vs_prompting
+
+        for cid in concept_ids:
+            if cid not in self.concept_vectors:
+                continue
+            concept_name = CONCEPT_NAMES.get(cid, cid)
+            comp = compare_steering_vs_prompting(
+                self,
+                cid,
+                concept_name,
+                EVALUATION_PROMPTS,
+            )
+            baseline_comparison[cid] = comp.rows()
+
+        # Save baseline comparison CSV
+        with open(root / "baseline_comparison.csv", "w", newline="") as f:
+            writer = csv.DictWriter(
+                f,
+                fieldnames=[
+                    "concept_id",
+                    "condition",
+                    "mean_continuation_loss",
+                    "extra_input_tokens",
+                    "n_generations",
+                ],
+            )
+            writer.writeheader()
+            for cid, rows in baseline_comparison.items():
+                for row in rows:
+                    writer.writerow(
+                        {
+                            "concept_id": cid,
+                            "condition": row["condition"],
+                            "mean_continuation_loss": row["mean_continuation_loss"],
+                            "extra_input_tokens": row["extra_input_tokens"],
+                            "n_generations": row["n_generations"],
+                        }
+                    )
+
+        # 5. Generate Markdown report
+        _logger.info("Phase 5: Generating results summary")
+        report_path = self._generate_results_markdown(
+            layer_sweep,
+            steering_sweep,
+            baseline_comparison,
+            best_layers,
+            root,
+        )
+
+        return {
+            "vectors_saved": True,
+            "layer_sweep": layer_sweep,
+            "steering_sweep": steering_sweep,
+            "baseline_comparison": baseline_comparison,
+            "best_layers": best_layers,
+            "markdown_report": str(report_path),
+        }
+
+    def _generate_results_markdown(
+        self,
+        layer_sweep: dict[str, list[dict[str, Any]]],
+        steering_sweep: dict[str, list[dict[str, Any]]],
+        baseline_comparison: dict[str, list[dict[str, Any]]],
+        best_layers: dict[str, int],
+        output_dir: Path,
+    ) -> Path:
+        """Generate the Markdown results summary.
+
+        Args:
+            layer_sweep: Per-concept layer sweep results.
+            steering_sweep: Per-concept steering sweep results.
+            baseline_comparison: Per-concept baseline comparison results.
+            best_layers: Per-concept best layer index.
+            output_dir: Output directory.
+
+        Returns:
+            Path to the generated Markdown file.
+        """
+        lines: list[str] = ["# Thaqafa-RepE Results Summary", ""]
+
+        # Provenance marker. run_full_experiment refuses to run without a live
+        # model, so a summary carrying this line is guaranteed to come from
+        # real forward passes; inject_results_to_tex.py refuses summaries
+        # without it.
+        lines.append(f"<!-- provenance: live-model-run model={self.model_name} -->")
+        lines.append("")
+        lines.append(f"Source model: `{self.model_name}`")
+        lines.append("")
+
+        lines.append("## 1. Best Layers by Concept")
+        lines.append("")
+        lines.append("| Concept | Best Layer | Max Accuracy | Chance |")
+        lines.append("|---------|-----------|-------------|--------|")
+        for cid, layer in best_layers.items():
+            rows = layer_sweep.get(cid, [])
+            if rows:
+                best = max(rows, key=lambda r: r["accuracy"])
+                acc = f"{best['accuracy']:.4f}"
+                ch = f"{best['chance']:.4f}"
+                lines.append(f"| {cid} | {layer} | {acc} | {ch} |")
+            else:
+                lines.append(f"| {cid} | {layer} | N/A | N/A |")
+
+        lines.append("")
+        lines.append("## 2. Steering Sweep (Effect vs Cost)")
+        lines.append("")
+        lines.append("| Concept | Strength | Effect KL | Mean Loss |")
+        lines.append("|---------|----------|-----------|-----------|")
+        for cid, rows in steering_sweep.items():
+            for r in rows:
+                lines.append(
+                    f"| {cid} | {r['strength']:.1f} | {r['effect_kl']:.4f} | {r['mean_loss']:.4f} |"
+                )
+
+        lines.append("")
+        lines.append("## 3. Baseline Comparison")
+        lines.append("")
+        lines.append("| Concept | Condition | Mean Loss | Extra Tokens | N Gens |")
+        lines.append("|---------|-----------|-----------|-------------|--------|")
+        for cid, rows in baseline_comparison.items():
+            for r in rows:
+                ml = f"{r['mean_continuation_loss']:.4f}"
+                lines.append(
+                    f"| {cid} | {r['condition']} | {ml} | {r['extra_input_tokens']} | {r['n_generations']} |"
+                )
+
+        lines.append("")
+        lines.append("## 4. LaTeX-Ready Snippets")
+        lines.append("")
+        lines.append("Copy the tables above into the \\todo markers in main.tex.")
+        lines.append("Replace placeholder figures with:")
+        lines.append("- figures/layer_sweep.png for the probe accuracy plot")
+        lines.append("- figures/effect_vs_cost.png for the steering sweep plot")
+        lines.append("")
+        lines.append("## 5. Summary Statistics")
+        lines.append("")
+        lines.append(f"- Concepts evaluated: {len(best_layers)}")
+        total_layers = sum(len(v) for v in layer_sweep.values())
+        total_steering = sum(len(v) for v in steering_sweep.values())
+        lines.append(f"- Total layer probes: {total_layers}")
+        lines.append(f"- Total steering evaluations: {total_steering}")
+        lines.append("")
+
+        path = output_dir / "RESULTS_SUMMARY.md"
+        path.write_text("\n".join(lines))
+        return path
 
     def save_vectors(self, path: Path | str) -> Path:
         """Write the cached concept vectors to disk.

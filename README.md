@@ -359,6 +359,32 @@ Each line of `data/datasets/cultural_concepts.jsonl` is one JSON object:
 | `cultural_context` | string | Where and why the concept matters |
 | `sentiment` | string | `positive`, `negative` or `mixed` |
 
+## Zero-GPU Strategy
+
+Experiments require GPU access (Llama-3-8B has ~16GB of weights), but the
+project follows a **hybrid architecture** that avoids owning a GPU:
+
+| Component | Where | Purpose |
+|-----------|-------|---------|
+| Development & Testing | Local (CPU) | Code, unit tests, lightweight evaluation |
+| Vector Extraction | [HF ZeroGPU Space](https://huggingface.co/spaces/al3obdi/thaqafa-repe-extraction) (A10G) | Heavy extraction from Llama-3-8B or Jais-13B |
+| Vector Storage | [HF Private Dataset](https://huggingface.co/datasets/al3obdi/thaqafa-repe-vectors) | Shared, versioned vector store |
+
+### How it works
+
+1. **Develop locally** on CPU — all code, tests, and lightweight evaluation run without a GPU.
+2. **Extract vectors** on the [ZeroGPU Space](https://huggingface.co/spaces/al3obdi/thaqafa-repe-extraction) — a Gradio UI loads the model on an A10G GPU, extracts contrastive concept vectors, and pushes them to a private HF Dataset.
+3. **Load vectors locally** — pull the extracted vectors from the dataset and use them for steering, probing, and evaluation on CPU.
+
+```python
+# Load vectors extracted by the Space
+from src.utils.hf_integration import load_vectors_from_hf
+
+vectors = load_vectors_from_hf("al3obdi/thaqafa-repe-vectors")
+```
+
+See the [Zero-GPU Guide](docs/zero_gpu_guide.md) for step-by-step instructions.
+
 ## Roadmap
 
 - [x] **Phase 0 — Scaffolding.** Repository structure, tooling, CI, dataset schema.

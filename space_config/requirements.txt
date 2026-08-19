@@ -1,0 +1,10 @@
+# Hugging Face Space requirements
+# ZeroGPU Spaces use Gradio with dynamic GPU allocation
+# gradio and huggingface_hub are pre-installed by the Space base image
+
+torch>=2.0.0
+transformers>=4.40.0
+transformer-lens>=2.0.0
+datasets>=2.19.0
+accelerate>=0.30.0
+numpy>=1.26.0

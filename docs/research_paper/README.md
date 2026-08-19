@@ -65,3 +65,46 @@ with `--xe` and add `polyglossia` plus an Arabic-capable font to the preamble.
 
 Build artefacts (`main.pdf`, `*.aux`, `*.bbl`, ...) are git-ignored: the PDF is
 regenerated from source, so committing it only produces merge conflicts.
+
+## Filling in Results
+
+The paper contains `\todo{...}` markers wherever real experimental numbers go.
+The `scripts/generate_paper_results.py` script generates all results and a
+summary with LaTeX-ready snippets.
+
+### Workflow
+
+1. **Run the experiment script**:
+
+   ```bash
+   python scripts/generate_paper_results.py --concepts wasta_001,muruah_001,diyafa_001
+   ```
+
+2. **Open the results summary**:
+
+   ```bash
+   cat outputs/paper_results/RESULTS_SUMMARY.md
+   ```
+
+   This file contains:
+   - Best layers per concept (table)
+   - Steering sweep: effect KL vs fluency loss (table)
+   - Optimal strength per concept (knee of the curve)
+   - Baseline comparison: steering vs prompting (table)
+   - LaTeX-ready snippets you can paste directly into `main.tex`
+
+3. **Fill in `\todo` markers in `main.tex`**:
+
+   - Copy the LaTeX tables from `RESULTS_SUMMARY.md` into the corresponding
+     `\todo` locations in `main.tex`
+   - Copy the generated figures from `outputs/paper_results/figures/` into
+     `docs/research_paper/figures/`
+   - Replace `\todo{}` entries in the results tables with the actual numbers
+
+4. **Rebuild**:
+
+   ```bash
+   cd docs/research_paper && ./build.sh
+   ```
+
+   Check that the `\todo` count printed by `build.sh` has decreased.
