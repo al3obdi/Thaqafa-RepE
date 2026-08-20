@@ -40,6 +40,7 @@ if str(PROJECT_ROOT) not in sys.path:
 from src.data.dataset_builder import load_concepts  # noqa: E402
 from src.models.rep_engine import EVALUATION_PROMPTS, CulturalRepE  # noqa: E402
 from src.utils.baselines import compare_steering_vs_prompting  # noqa: E402
+from src.utils.causal import readback, summarize_readback  # noqa: E402
 from src.utils.crosslingual import alignment, summarize_alignment  # noqa: E402
 from src.utils.evaluation import evaluate_steering  # noqa: E402
 from src.utils.probes import (  # noqa: E402
@@ -63,6 +64,17 @@ residual stream grows in norm with depth. See ``calibrate_layer_norms``.
 
 DEFAULT_MAX_NEW_TOKENS = 24
 DEFAULT_BASELINE_STRENGTH = 0.2
+
+DEFAULT_READBACK_STRENGTHS: tuple[float, ...] = (0.1, 0.2, 0.4)
+"""Strengths for the causal read-back, reported in full rather than picked.
+
+The effect saturates: push hard enough and every prompt reads positive under
+any direction. Reporting one strength would mean choosing it, so all of them
+are reported and the reader can see where the concept arm separates from the
+control and where both have saturated.
+"""
+
+DEFAULT_N_RANDOM_CONTROLS = 3
 
 
 def load_concept_names(dataset_path: Path | str) -> dict[str, str]:
@@ -321,6 +333,64 @@ def run_alignment(
     return [dict(row) for row in summarize_alignment(alignment(engine, usable, shared_layer))]
 
 
+def run_readback(
+    engine: CulturalRepE,
+    concept_ids: list[str],
+    best_layers: dict[str, int],
+    strengths: tuple[float, ...] = DEFAULT_READBACK_STRENGTHS,
+    n_random: int = DEFAULT_N_RANDOM_CONTROLS,
+    seed: int = DEFAULT_SEED,
+) -> list[dict[str, Any]]:
+    """Ask whether steering writes the concept each probe reads.
+
+    The probe reads from a layer below the last block, and injection happens at
+    the concept's own best layer. Concepts whose best layer leaves no room to
+    read deeper are skipped rather than measured at the injection layer, which
+    would only confirm that addition works.
+
+    Args:
+        engine: Engine with a loaded model and the concept vectors extracted.
+        concept_ids: Concepts to check.
+        best_layers: Per-concept injection layer.
+        strengths: Norm-relative coefficients, all reported.
+        n_random: Matched-norm control directions per point.
+        seed: Seed for the probes and the control directions.
+
+    Returns:
+        Rows ready for CSV, one per concept and strength.
+    """
+    n_layers = int(engine.model.cfg.n_layers)  # type: ignore[union-attr]
+    rows: list[dict[str, Any]] = []
+
+    for concept_id in concept_ids:
+        inject_layer = best_layers[concept_id]
+        read_layer = n_layers - 1
+        if read_layer <= inject_layer:
+            logger.warning(
+                "skipping read-back for %s: best layer %d leaves no deeper layer to read",
+                concept_id,
+                inject_layer,
+            )
+            continue
+
+        results = {}
+        for strength in strengths:
+            result = readback(
+                engine,
+                concept_id,
+                inject_layer=inject_layer,
+                read_layer=read_layer,
+                strength=strength,
+                strength_mode="relative",
+                n_random=n_random,
+                seed=seed,
+            )
+            results[f"{concept_id}@{strength}"] = result
+        rows.extend(dict(row) for row in summarize_readback(results))
+
+    return rows
+
+
 def write_report(
     output_dir: Path,
     manifest: dict[str, Any],
@@ -330,6 +400,7 @@ def write_report(
     baseline_rows: list[dict[str, Any]],
     alignment_rows: list[dict[str, Any]] | None = None,
     permutations: int = DEFAULT_N_PERMUTATIONS,
+    readback_rows: list[dict[str, Any]] | None = None,
 ) -> Path:
     """Write the human-readable summary of a pilot run.
 
@@ -348,6 +419,8 @@ def write_report(
             list when the check did not run.
         permutations: Label shufflings behind the p-values, quoted in the text
             so a reader can see the resolution the p-values were measured at.
+        readback_rows: Causal read-back rows. Omit or pass an empty list when
+            the check did not run.
 
     Returns:
         The path written.
@@ -487,6 +560,43 @@ def write_report(
                 f"{float(row['separation']):+.3f} |"
             )
 
+    if readback_rows:
+        lines.extend(
+            [
+                "",
+                "## 5. Does steering write what the probe reads?",
+                "",
+                "The direction is injected below a probe's layer and the probe",
+                "is then run on neutral prompts - the same prompts the concept",
+                "was contrasted against. `steered` is the share it calls",
+                "positive; `random` is the same share under matched-norm random",
+                "directions injected at the same layer.",
+                "",
+                "**`lift` is the only column that carries information.** KL",
+                "divergence and fluency loss are magnitudes that any large",
+                "perturbation produces, and so is a rise in the probe's",
+                "positive rate. What a random direction cannot produce is a",
+                "rise the *concept's own* probe recognises beyond it.",
+                "",
+                "Rates saturate at high strength: push hard enough and every",
+                "prompt reads positive under any direction, which shows up as",
+                "the lift shrinking back toward zero. Every strength is",
+                "reported rather than one being chosen.",
+                "",
+                "| Concept | Inject | Read | Strength | Base | Steered | Random | Lift |",
+                "|---|---|---|---|---|---|---|---|",
+            ]
+        )
+        for row in readback_rows:
+            lines.append(
+                f"| `{row['concept_id']}` | {row['inject_layer']} | "
+                f"{row['read_layer']} | {float(row['strength']):.2f} | "
+                f"{float(row['baseline_rate']):.2f} | "
+                f"{float(row['steered_rate']):.2f} | "
+                f"{float(row['mean_random_rate']):.2f} | "
+                f"{float(row['lift_over_random']):+.2f} |"
+            )
+
     lines.extend(
         [
             "",
@@ -501,6 +611,10 @@ def write_report(
             "- A small p-value says the labelling is unlikely to be unrelated to",
             "  the activations. It does not say the probe found the concept",
             "  rather than a word the exemplars happen to share.",
+            "- The read-back shows a written direction reaching the probe that",
+            "  reads it. Both sides come from the same twelve exemplars, so it",
+            "  is a consistency check on the method, not evidence that the",
+            "  direction is the cultural concept a person would name.",
             "- Most of the concept entries are still awaiting native-speaker",
             "  review (`review_status` in the dataset).",
             "- A model with little Arabic capability can only validate that the",
@@ -561,6 +675,11 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help="Skip the generation-based baseline comparison, which dominates runtime.",
     )
     parser.add_argument(
+        "--no-readback",
+        action="store_true",
+        help="Skip the causal read-back check.",
+    )
+    parser.add_argument(
         "--permutations",
         type=int,
         default=DEFAULT_N_PERMUTATIONS,
@@ -617,6 +736,9 @@ def main(argv: list[str] | None = None) -> int:
             "max_new_tokens": args.max_new_tokens,
             "probe_permutations": args.permutations,
             "baselines_run": not args.no_baselines,
+            "readback_run": not args.no_readback,
+            "readback_strengths": list(DEFAULT_READBACK_STRENGTHS),
+            "readback_random_controls": DEFAULT_N_RANDOM_CONTROLS,
             "evaluation_prompts": list(EVALUATION_PROMPTS),
         },
     )
@@ -696,6 +818,29 @@ def main(argv: list[str] | None = None) -> int:
             alignment_rows,
         )
 
+    readback_rows: list[dict[str, Any]] = []
+    if not args.no_readback:
+        readback_rows = run_readback(engine, concept_ids, best_layers, seed=args.seed)
+    if readback_rows:
+        _write_csv(
+            output_dir / "causal_readback.csv",
+            [
+                "concept_id",
+                "inject_layer",
+                "read_layer",
+                "strength",
+                "strength_mode",
+                "baseline_rate",
+                "steered_rate",
+                "mean_random_rate",
+                "lift_over_random",
+                "n_random",
+                "probe_accuracy",
+                "n_prompts",
+            ],
+            readback_rows,
+        )
+
     write_report(
         output_dir,
         manifest,
@@ -705,6 +850,7 @@ def main(argv: list[str] | None = None) -> int:
         baseline_rows,
         alignment_rows,
         args.permutations,
+        readback_rows,
     )
     logger.info("pilot complete: %s", output_dir)
     return 0

@@ -351,10 +351,16 @@ python scripts/run_pilot.py --model Qwen/Qwen2.5-0.5B \
 
 The runner probes every layer, extracts each concept at the layer the probe
 picked, sweeps norm-relative injection strengths recording effect against cost,
-compares steering with prompt-engineering baselines, and checks whether a
-concept's Arabic-only and English-only directions agree — against a mismatched
-control, because two directions at one layer can be similar for reasons that
-have nothing to do with the concept.
+compares steering with prompt-engineering baselines, checks whether a concept's
+Arabic-only and English-only directions agree, and asks whether steering with a
+concept's direction makes that concept's own probe fire on neutral prompts.
+
+Each of those last two carries a control, because the headline number alone
+would be uninterpretable: two directions at one layer can be similar for
+reasons that have nothing to do with the concept, and a random vector of the
+same norm shifts a distribution and moves a probe just as a concept vector
+does. What a random direction cannot do is move the *concept's own* probe
+further than it moves by chance.
 
 The gap between the two runs is the headline: `gpt2` has almost no Arabic
 capability, and it is the concepts' readability that collapses with it, not the
@@ -386,6 +392,7 @@ Thaqafa-RepE/
 │   ├── models/rep_engine.py       # CulturalRepE: extraction and injection
 │   ├── utils/baselines.py         # Prompt-engineering comparison conditions
 │   ├── utils/evaluation.py        # Strength and layer sweeps, effect vs cost
+│   ├── utils/causal.py            # Read-back: does steering write what probes read
 │   ├── utils/crosslingual.py      # Arabic/English direction agreement
 │   ├── utils/probes.py            # Cross-validated linear probes per layer
 │   ├── utils/provenance.py        # Run manifests: commit, seed, dataset hash
