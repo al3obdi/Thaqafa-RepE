@@ -19,6 +19,25 @@ it is evidence that the probe had nothing to learn from.
 **Scale differs across layers.** Residual stream norms grow with depth, so an
 unstandardised probe would find later layers "easier" for reasons that have
 nothing to do with the concept. Features are standardised before fitting.
+
+**A perfect score is not automatically a finding.** With twenty prompts and a
+``d_model``-dimensional input, a linear classifier can separate a great many
+labellings, and a probe can also score highly by reading a keyword the exemplars
+happen to share rather than the concept behind it. Cross-validation guards
+against the first but not the second. Every result therefore carries a
+permutation p-value: the labels are shuffled many times and the whole
+cross-validation rerun, and the p-value is the share of shufflings that scored
+at least as well as the real one. It answers "could this have come out of a
+labelling with no relationship to the activations?", which is the question a
+high accuracy on a small sample actually raises.
+
+**Classes are rarely the same size.** A concept with twelve exemplars and eight
+curated contrasts gives raw accuracy a floor of 0.6, and a probe can reach it by
+answering "positive" every time. Everything here therefore reports *balanced*
+accuracy - the mean of the per-class recalls - whose chance level is exactly 0.5
+for any class ratio, and fits with ``class_weight="balanced"`` so the classifier
+is not rewarded for the same shortcut. The majority-class rate is still reported
+alongside, as a description of the design rather than as the bar to clear.
 """
 
 from __future__ import annotations
@@ -31,7 +50,12 @@ from typing import TYPE_CHECKING, Any
 import numpy as np
 import torch
 from sklearn.linear_model import LogisticRegression
-from sklearn.model_selection import StratifiedKFold, cross_val_score
+from sklearn.metrics import balanced_accuracy_score
+from sklearn.model_selection import (
+    StratifiedKFold,
+    cross_val_score,
+    permutation_test_score,
+)
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import StandardScaler
 
@@ -46,6 +70,16 @@ DEFAULT_C = 1.0
 DEFAULT_MAX_ITER = 2000
 DEFAULT_SEED = 0
 DEFAULT_N_SPLITS = 5
+DEFAULT_SCORING = "balanced_accuracy"
+"""Scoring rule for cross-validation. See the module docstring."""
+
+CHANCE_BALANCED = 0.5
+"""Chance level for balanced accuracy, whatever the class ratio."""
+
+DEFAULT_N_PERMUTATIONS = 200
+"""Label shufflings behind the p-value. The floor a p-value can reach is
+``1 / (n + 1)``, so 200 can distinguish p <= 0.005 from anything larger;
+the cost is negligible next to collecting the activations once per layer."""
 
 ArrayLike = "np.ndarray | torch.Tensor | list[list[float]]"
 
@@ -94,12 +128,29 @@ class ProbeResult:
 
     Attributes:
         layer: The layer the probe was trained on.
-        accuracy: Mean accuracy across cross-validation folds.
+        accuracy: Mean score across cross-validation folds, under
+            :attr:`metric`. With the default metric this is balanced accuracy,
+            the mean of the per-class recalls.
         std: Standard deviation across folds. Large values on a small dataset
             mean the estimate is not trustworthy.
-        chance: Majority-class accuracy, the floor to compare against.
+        chance: The floor to compare :attr:`accuracy` against. For balanced
+            accuracy this is 0.5 whatever the class ratio.
         n_samples: How many prompts the probe saw in total.
-        fold_scores: The per-fold accuracies behind :attr:`accuracy`.
+        fold_scores: The per-fold scores behind :attr:`accuracy`.
+        majority_class_rate: What a classifier answering with the larger class
+            every time would score under *raw* accuracy. Reported as a
+            description of how balanced the design is, not as a bar to clear -
+            balanced accuracy already discounts that strategy to 0.5.
+        metric: Name of the scoring rule, so a stored result cannot be read
+            under the wrong one.
+        p_value: Share of label shufflings that scored at least as well as the
+            real labelling, or ``None`` when the permutation test was skipped.
+            Small means the score is unlikely to have come from a labelling
+            unrelated to the activations. It says nothing about *why* the
+            probe succeeded: reading a keyword the exemplars share would also
+            give a small p-value.
+        n_permutations: How many shufflings :attr:`p_value` rests on. The
+            smallest p-value obtainable is ``1 / (n_permutations + 1)``.
     """
 
     layer: int
@@ -108,10 +159,14 @@ class ProbeResult:
     chance: float
     n_samples: int
     fold_scores: list[float] = field(default_factory=list)
+    majority_class_rate: float = CHANCE_BALANCED
+    metric: str = DEFAULT_SCORING
+    p_value: float | None = None
+    n_permutations: int = 0
 
     @property
     def lift_over_chance(self) -> float:
-        """How far above the majority-class floor the probe scored."""
+        """How far above the metric's chance level the probe scored."""
         return self.accuracy - self.chance
 
 
@@ -167,6 +222,10 @@ class LinearProbe:
                         C=self.C,
                         max_iter=self.max_iter,
                         random_state=self.seed,
+                        # Pairs with balanced-accuracy scoring: without it the
+                        # fit itself is pulled toward the larger class, and the
+                        # metric would only be measuring that pull.
+                        class_weight="balanced",
                     ),
                 ),
             ]
@@ -194,10 +253,13 @@ class LinearProbe:
         return self
 
     def score(self, activations: Any, labels: Any) -> float:
-        """Return accuracy on ``activations``.
+        """Return balanced accuracy on ``activations``.
 
-        Scoring on the data the probe was fitted to reports training accuracy,
-        which on a small dataset is close to meaningless. Prefer
+        Balanced rather than raw, for the reason in the module docstring: on an
+        uneven split, raw accuracy rewards answering with the larger class.
+
+        Scoring on the data the probe was fitted to reports training
+        performance, which on a small dataset is close to meaningless. Prefer
         :meth:`cross_val_accuracy`.
 
         Args:
@@ -205,7 +267,7 @@ class LinearProbe:
             labels: Class label per sample.
 
         Returns:
-            Accuracy in ``[0, 1]``.
+            Balanced accuracy in ``[0, 1]``.
 
         Raises:
             RuntimeError: If the probe has not been fitted.
@@ -215,7 +277,7 @@ class LinearProbe:
             raise RuntimeError("Probe is not fitted. Call fit() first.")
 
         features, targets = self._validate(activations, labels, require_two_classes=False)
-        return float(self.pipeline.score(features, targets))
+        return float(balanced_accuracy_score(targets, self.pipeline.predict(features)))
 
     def predict(self, activations: Any) -> np.ndarray:
         """Return the predicted label for each row of ``activations``.
@@ -259,8 +321,9 @@ class LinearProbe:
         activations: Any,
         labels: Any,
         n_splits: int = DEFAULT_N_SPLITS,
+        scoring: str = DEFAULT_SCORING,
     ) -> tuple[float, float, list[float]]:
-        """Return cross-validated accuracy, its spread, and the fold scores.
+        """Return the cross-validated score, its spread, and the fold scores.
 
         Folds are stratified so each holds both classes. ``n_splits`` is capped
         at the size of the smallest class, because a stratified fold cannot
@@ -272,9 +335,13 @@ class LinearProbe:
             activations: Shape ``(n_samples, d_model)``.
             labels: Class label per sample.
             n_splits: Requested number of folds.
+            scoring: A scikit-learn scoring name. The default discounts the
+                answer-with-the-larger-class strategy to 0.5; switching to
+                ``"accuracy"`` reintroduces the class-ratio floor, so anything
+                reported under it needs that floor quoted next to it.
 
         Returns:
-            A tuple of ``(mean_accuracy, std_accuracy, fold_scores)``.
+            A tuple of ``(mean_score, std_score, fold_scores)``.
 
         Raises:
             ValueError: If the inputs are malformed or single-class.
@@ -294,9 +361,67 @@ class LinearProbe:
             return training_score, 0.0, [training_score]
 
         splitter = StratifiedKFold(n_splits=effective_splits, shuffle=True, random_state=self.seed)
-        scores = cross_val_score(self._build_pipeline(), features, targets, cv=splitter)
+        scores = cross_val_score(
+            self._build_pipeline(), features, targets, cv=splitter, scoring=scoring
+        )
         fold_scores = [float(score) for score in scores]
         return float(np.mean(fold_scores)), float(np.std(fold_scores)), fold_scores
+
+    def permutation_p_value(
+        self,
+        activations: Any,
+        labels: Any,
+        n_splits: int = DEFAULT_N_SPLITS,
+        scoring: str = DEFAULT_SCORING,
+        n_permutations: int = DEFAULT_N_PERMUTATIONS,
+    ) -> float | None:
+        """Return the share of shuffled labellings that scored at least as well.
+
+        The same cross-validation is rerun on many random relabellings, so the
+        answer accounts for everything the real run does - the fold structure,
+        the standardisation, the class weighting - rather than comparing against
+        a theoretical floor.
+
+        Args:
+            activations: Shape ``(n_samples, d_model)``.
+            labels: Class label per sample.
+            n_splits: Requested number of folds.
+            scoring: scikit-learn scoring name. Must match the score the
+                p-value is going to be printed next to.
+            n_permutations: Label shufflings to run.
+
+        Returns:
+            The p-value, or ``None`` when there are too few samples for
+            cross-validation, in which case there is nothing to test.
+
+        Raises:
+            ValueError: If the inputs are malformed, single-class, or
+                ``n_permutations`` is not positive.
+        """
+        if n_permutations < 1:
+            raise ValueError(f"n_permutations must be positive, got {n_permutations}")
+
+        features, targets = self._validate(activations, labels)
+        effective_splits = min(n_splits, min(Counter(targets.tolist()).values()))
+        if effective_splits < 2:
+            logger.warning("Too few samples per class to permutation-test; reporting no p-value.")
+            return None
+
+        splitter = StratifiedKFold(n_splits=effective_splits, shuffle=True, random_state=self.seed)
+        _, _, p_value = permutation_test_score(
+            self._build_pipeline(),
+            features,
+            targets,
+            cv=splitter,
+            scoring=scoring,
+            n_permutations=n_permutations,
+            random_state=self.seed,
+            # The shufflings are independent, and there are hundreds of them
+            # per layer. Without this the permutation test dominates the
+            # runtime of a sweep on a machine that has cores going spare.
+            n_jobs=-1,
+        )
+        return float(p_value)
 
     @staticmethod
     def _validate(
@@ -346,6 +471,8 @@ def probe_layer(
     negative_prompts: list[str],
     n_splits: int = DEFAULT_N_SPLITS,
     seed: int = DEFAULT_SEED,
+    scoring: str = DEFAULT_SCORING,
+    n_permutations: int = DEFAULT_N_PERMUTATIONS,
 ) -> ProbeResult:
     """Train and cross-validate a probe on one layer.
 
@@ -356,6 +483,10 @@ def probe_layer(
         negative_prompts: Prompts that do not.
         n_splits: Requested cross-validation folds.
         seed: Random seed for the probe and the folds.
+        scoring: scikit-learn scoring name. The result records which one was
+            used and sets its chance floor to match.
+        n_permutations: Label shufflings behind the p-value. Zero skips the
+            permutation test, leaving ``p_value`` as ``None``.
 
     Returns:
         The cross-validated result for this layer.
@@ -377,15 +508,28 @@ def probe_layer(
     labels = [1] * len(positive_prompts) + [0] * len(negative_prompts)
 
     probe = LinearProbe(seed=seed)
-    accuracy, std, fold_scores = probe.cross_val_accuracy(features, labels, n_splits=n_splits)
+    accuracy, std, fold_scores = probe.cross_val_accuracy(
+        features, labels, n_splits=n_splits, scoring=scoring
+    )
+    p_value = (
+        probe.permutation_p_value(
+            features, labels, n_splits=n_splits, scoring=scoring, n_permutations=n_permutations
+        )
+        if n_permutations > 0
+        else None
+    )
 
     return ProbeResult(
         layer=engine._resolve_layer(layer),
         accuracy=accuracy,
         std=std,
-        chance=chance_accuracy(labels),
+        chance=CHANCE_BALANCED if scoring == DEFAULT_SCORING else chance_accuracy(labels),
         n_samples=len(labels),
         fold_scores=fold_scores,
+        majority_class_rate=chance_accuracy(labels),
+        metric=scoring,
+        p_value=p_value,
+        n_permutations=n_permutations if p_value is not None else 0,
     )
 
 
@@ -397,6 +541,8 @@ def sweep_layers_with_probe(
     layers: list[int] | None = None,
     n_splits: int = DEFAULT_N_SPLITS,
     seed: int = DEFAULT_SEED,
+    scoring: str = DEFAULT_SCORING,
+    n_permutations: int = DEFAULT_N_PERMUTATIONS,
 ) -> dict[int, ProbeResult]:
     """Probe every layer and report where the concept is linearly readable.
 
@@ -415,6 +561,10 @@ def sweep_layers_with_probe(
         layers: Layers to probe. Defaults to every block in the model.
         n_splits: Requested cross-validation folds.
         seed: Random seed for the probes and the folds.
+        scoring: scikit-learn scoring name, applied at every layer so the
+            comparison across layers is like for like.
+        n_permutations: Label shufflings behind each layer's p-value. Zero
+            skips the permutation test.
 
     Returns:
         A mapping from layer index to :class:`ProbeResult`, ordered by layer.
@@ -450,14 +600,17 @@ def sweep_layers_with_probe(
             negative_prompts=negatives,
             n_splits=n_splits,
             seed=seed,
+            scoring=scoring,
+            n_permutations=n_permutations,
         )
         results[result.layer] = result
         logger.info(
-            "layer %2d: accuracy %.3f +/- %.3f (chance %.3f)",
+            "layer %2d: %.3f +/- %.3f (chance %.3f, p=%s)",
             result.layer,
             result.accuracy,
             result.std,
             result.chance,
+            "n/a" if result.p_value is None else f"{result.p_value:.4f}",
         )
 
     return results

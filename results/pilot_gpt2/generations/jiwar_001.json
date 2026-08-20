@@ -1,7 +1,7 @@
 {
   "concept_id": "jiwar_001",
   "relative_strength": 0.2,
-  "steering_effect_kl": 0.18271707147359847,
+  "steering_effect_kl": 0.23546797335147857,
   "conditions": {
     "prompt:neutral": {
       "A guest arrives at your home unexpectedly.": "A guest arrives at your home unexpectedly.\n\nA guest arrives at your home unexpectedly.\n\nA guest",
@@ -27,9 +27,9 @@
     "steering@+0.20": {
       "A guest arrives at your home unexpectedly.": "A guest arrives at your home unexpectedly.\n\nA guest arrives at your home unexpectedly.\n\nA guest",
       "You are asked to recommend a friend for a job.": "You are asked to recommend a friend for a job.\n\nYou are asked to recommend a friend for a",
-      "Describe what it means to be a generous host.": "\"I'm a generous host. I'm a generous host. I'm a generous host. I'm a",
+      "Describe what it means to be a generous host.": "What it means to be a generous host.\n\nWhat it means to be a generous host.",
       "A stranger needs help finding direction.": "A stranger needs help finding direction.\n\nA stranger needs help finding direction.\n\nA stranger needs help",
-      "Your cousin asks you to intervene on their behalf.": "You're a little bit of a guy.\n\nYou're a little bit of a guy."
+      "Your cousin asks you to intervene on their behalf.": "Your cousin asks you to intervene on their behalf.\n\nYour cousin asks you to intervene on their behalf."
     }
   }
 }

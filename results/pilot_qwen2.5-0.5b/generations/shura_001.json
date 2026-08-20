@@ -1,0 +1,35 @@
+{
+  "concept_id": "shura_001",
+  "relative_strength": 0.2,
+  "steering_effect_kl": 1.3298868894577027,
+  "conditions": {
+    "prompt:neutral": {
+      "A guest arrives at your home unexpectedly.": "You should say: ____\nA. Good morning.\nB. Good afternoon.\nC. Good evening.\nD. Good",
+      "You are asked to recommend a friend for a job.": "The friend is a 25-year-old male with a bachelor's degree in computer science. He is a hardworking",
+      "Describe what it means to be a generous host.": "Being a generous host is a way of showing respect and care for others. It involves being open and welcoming to guests,",
+      "A stranger needs help finding direction.": "He is standing in a field with a map in his hand. He is lost and needs to find his way home.",
+      "Your cousin asks you to intervene on their behalf.": "You are the only person who can help them. You have to decide whether to help or not. You have to decide"
+    },
+    "prompt:direct_en": {
+      "A guest arrives at your home unexpectedly.": "What is the best way to handle this situation?\nA. Ask the guest to leave immediately.\nB. Offer to help",
+      "You are asked to recommend a friend for a job.": "You have a list of 10 candidates, each with their own strengths and weaknesses. You need to select the best",
+      "Describe what it means to be a generous host.": "What are the benefits of being a generous host? What are the benefits of being a generous host? What are the benefits",
+      "A stranger needs help finding direction.": "He is lost in the woods. He is not sure where he is. He is not sure how to get back home",
+      "Your cousin asks you to intervene on their behalf.": "They are a 17 year old who has been in a car accident and is in a coma. They are in"
+    },
+    "prompt:persona_en": {
+      "A guest arrives at your home unexpectedly.": "You are not sure if you should invite him/her in or not. You are not sure if you should invite him/her",
+      "You are asked to recommend a friend for a job.": "You have a list of 10 candidates, each with their own strengths and weaknesses. You are asked to pick the",
+      "Describe what it means to be a generous host.": "To be a generous host is to be a person who is willing to offer their time, energy, and resources to others",
+      "A stranger needs help finding direction.": "He is lost in the city. He is not sure where he is. He is not sure what he is looking for",
+      "Your cousin asks you to intervene on their behalf.": "You are not sure if you should do so or not. You are not sure if you should do so or not."
+    },
+    "steering@+0.20": {
+      "A guest arrives at your home unexpectedly.": "You are a real estate agent. You are a real estate agent. You are a real estate agent. You are a",
+      "You are asked to recommend a friend for a job.": "You are a software developer. You are a software developer. You are a software developer. You are a software developer.",
+      "Describe what it means to be a generous host.": "A good host is a person who is a good host. A good host is a person who is a good host.",
+      "A stranger needs help finding direction.": "A friend in the United States, a friend in China. A friend in China, a friend in a friend. A",
+      "Your cousin asks you to intervene on their behalf.": "You have a good relationship with your family, and you have lived in the same city for a long time, and you"
+    }
+  }
+}

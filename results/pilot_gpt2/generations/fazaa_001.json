@@ -1,7 +1,7 @@
 {
   "concept_id": "fazaa_001",
   "relative_strength": 0.2,
-  "steering_effect_kl": 0.046201017126441,
+  "steering_effect_kl": 0.21934243142604828,
   "conditions": {
     "prompt:neutral": {
       "A guest arrives at your home unexpectedly.": "A guest arrives at your home unexpectedly.\n\nA guest arrives at your home unexpectedly.\n\nA guest",
@@ -27,9 +27,9 @@
     "steering@+0.20": {
       "A guest arrives at your home unexpectedly.": "A guest arrives at your home unexpectedly.\n\nA guest arrives at your home unexpectedly.\n\nA guest",
       "You are asked to recommend a friend for a job.": "You are asked to recommend a friend for a job.\n\nYou are asked to recommend a friend for a",
-      "Describe what it means to be a generous host.": "I am a generous host.\n\nI am a generous host.\n\nI am a generous host.",
+      "Describe what it means to be a generous host.": "\"I'm a generous host. I'm a generous host. I'm a generous host. I'm a",
       "A stranger needs help finding direction.": "A stranger needs help finding direction.\n\nA stranger needs help finding direction.\n\nA stranger needs help",
-      "Your cousin asks you to intervene on their behalf.": "You're not going to do it.\n\nYou're not going to do it.\n\nYou're"
+      "Your cousin asks you to intervene on their behalf.": "Your cousin asks you to intervene on their behalf.\n\nYour cousin asks you to intervene on their behalf."
     }
   }
 }

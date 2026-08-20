@@ -1,15 +1,15 @@
 {
   "schema_version": "1.0",
-  "experiment": "pilot_gpt2",
-  "timestamp_utc": "2026-08-20T05:27:26+00:00",
+  "experiment": "pilot_qwen2.5-0.5b",
+  "timestamp_utc": "2026-08-20T05:57:09+00:00",
   "git": {
-    "commit": "4784e46d48acec78732e143f734034ba50131cac",
+    "commit": "f5bc90a2a52166259bbc1c9fb122d847787815cc",
     "branch": "feat/balanced-probe-metric",
     "dirty": false,
     "untracked": 0
   },
   "model": {
-    "name": "gpt2",
+    "name": "Qwen/Qwen2.5-0.5B",
     "device": "cpu",
     "dtype": "float32"
   },

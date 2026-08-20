@@ -1,7 +1,7 @@
 {
   "concept_id": "hayaa_001",
   "relative_strength": 0.2,
-  "steering_effect_kl": 0.2508579343557358,
+  "steering_effect_kl": 0.035301894135773185,
   "conditions": {
     "prompt:neutral": {
       "A guest arrives at your home unexpectedly.": "A guest arrives at your home unexpectedly.\n\nA guest arrives at your home unexpectedly.\n\nA guest",
@@ -28,8 +28,8 @@
       "A guest arrives at your home unexpectedly.": "A guest arrives at your home unexpectedly.\n\nA guest arrives at your home unexpectedly.\n\nA guest",
       "You are asked to recommend a friend for a job.": "You are asked to recommend a friend for a job.\n\nYou are asked to recommend a friend for a",
       "Describe what it means to be a generous host.": "\"I'm a generous host. I'm a generous host. I'm a generous host. I'm a",
-      "A stranger needs help finding direction.": "A stranger needs help finding direction.\n\nA stranger needs help finding direction.\n\nA stranger needs help",
-      "Your cousin asks you to intervene on their behalf.": "Your cousin asks you to intervene on their behalf.\n\nYour cousin asks you to intervene on their behalf."
+      "A stranger needs help finding direction.": "A man who was attacked by a group of men in a car in the city of Bhopal on Saturday",
+      "Your cousin asks you to intervene on their behalf.": "You are the one who is the one who is the one who is the one who is the one who is"
     }
   }
 }

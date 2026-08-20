@@ -13,8 +13,12 @@ from __future__ import annotations
 import numpy as np
 import pytest
 import torch
+from sklearn.linear_model import LogisticRegression
+from sklearn.pipeline import Pipeline
+from sklearn.preprocessing import StandardScaler
 
 from src.utils.probes import (
+    DEFAULT_N_PERMUTATIONS,
     LinearProbe,
     ProbeResult,
     best_layer,
@@ -197,7 +201,9 @@ class TestProbeLayer:
         engine = make_marker_engine()
         positives, negatives = marked_prompts()
 
-        result = probe_layer(engine, min(INFORMATIVE_LAYERS), positives, negatives)
+        result = probe_layer(
+            engine, min(INFORMATIVE_LAYERS), positives, negatives, n_permutations=0
+        )
 
         assert result.accuracy == pytest.approx(1.0)
         assert result.chance == pytest.approx(0.5)
@@ -208,7 +214,7 @@ class TestProbeLayer:
         engine = make_marker_engine()
         positives, negatives = marked_prompts()
 
-        result = probe_layer(engine, 0, positives, negatives)
+        result = probe_layer(engine, 0, positives, negatives, n_permutations=0)
 
         assert result.accuracy <= 0.6
 
@@ -217,7 +223,7 @@ class TestProbeLayer:
         engine = make_marker_engine(model)
         positives, negatives = marked_prompts(count=4)
 
-        probe_layer(engine, 4, positives, negatives)
+        probe_layer(engine, 4, positives, negatives, n_permutations=0)
 
         assert set(model.probed_layers) == {4}
 
@@ -225,13 +231,13 @@ class TestProbeLayer:
         engine = make_marker_engine()
 
         with pytest.raises(ValueError, match="positive_prompts"):
-            probe_layer(engine, 0, [], ["a"])
+            probe_layer(engine, 0, [], ["a"], n_permutations=0)
 
     def test_empty_negative_set_is_rejected(self) -> None:
         engine = make_marker_engine()
 
         with pytest.raises(ValueError, match="negative_prompts"):
-            probe_layer(engine, 0, ["a"], [])
+            probe_layer(engine, 0, ["a"], [], n_permutations=0)
 
 
 class TestSweepLayersWithProbe:
@@ -241,7 +247,7 @@ class TestSweepLayersWithProbe:
         engine = make_marker_engine()
         positives, negatives = marked_prompts()
 
-        results = sweep_layers_with_probe(engine, "diyafa", positives, negatives)
+        results = sweep_layers_with_probe(engine, "diyafa", positives, negatives, n_permutations=0)
 
         assert set(results) == set(range(MARKER_N_LAYERS))
         assert all(isinstance(result, ProbeResult) for result in results.values())
@@ -250,7 +256,7 @@ class TestSweepLayersWithProbe:
         engine = make_marker_engine()
         positives, negatives = marked_prompts()
 
-        results = sweep_layers_with_probe(engine, "diyafa", positives, negatives)
+        results = sweep_layers_with_probe(engine, "diyafa", positives, negatives, n_permutations=0)
 
         for layer in INFORMATIVE_LAYERS:
             assert results[layer].accuracy == pytest.approx(1.0), f"layer {layer}"
@@ -261,14 +267,16 @@ class TestSweepLayersWithProbe:
         engine = make_marker_engine()
         positives, negatives = marked_prompts(count=4)
 
-        results = sweep_layers_with_probe(engine, "diyafa", positives, negatives, layers=[0, 3])
+        results = sweep_layers_with_probe(
+            engine, "diyafa", positives, negatives, layers=[0, 3], n_permutations=0
+        )
 
         assert set(results) == {0, 3}
 
     def test_prompts_default_to_the_dataset_and_curated_contrasts(self) -> None:
         engine = make_marker_engine()
 
-        results = sweep_layers_with_probe(engine, "diyafa_001", layers=[0])
+        results = sweep_layers_with_probe(engine, "diyafa_001", layers=[0], n_permutations=0)
 
         from src.data.dataset_builder import load_concepts
 
@@ -282,7 +290,7 @@ class TestSweepLayersWithProbe:
         engine = make_marker_engine()
 
         with pytest.raises(ValueError, match="was not found"):
-            sweep_layers_with_probe(engine, "not_a_concept_999", layers=[0])
+            sweep_layers_with_probe(engine, "not_a_concept_999", layers=[0], n_permutations=0)
 
 
 class TestBestLayer:
@@ -314,7 +322,9 @@ class TestSummarizeProbeSweep:
     def test_returns_parallel_lists_sorted_by_layer(self) -> None:
         engine = make_marker_engine()
         positives, negatives = marked_prompts(count=4)
-        results = sweep_layers_with_probe(engine, "diyafa", positives, negatives, layers=[3, 0, 1])
+        results = sweep_layers_with_probe(
+            engine, "diyafa", positives, negatives, layers=[3, 0, 1], n_permutations=0
+        )
 
         summary = summarize_probe_sweep(results)
 
@@ -322,3 +332,194 @@ class TestSummarizeProbeSweep:
         assert len(summary["accuracies"]) == 3
         assert len(summary["stds"]) == 3
         assert summary["chance"] == [0.5, 0.5, 0.5]
+
+
+def uninformative_imbalanced_data(
+    n_positive: int = 12,
+    n_negative: int = 8,
+) -> tuple[np.ndarray, list[int]]:
+    """Build an uneven split whose features carry no class signal at all.
+
+    Both classes cycle through the same four feature vectors, so every value
+    that appears in one class also appears in the other and nothing separates
+    them. Under raw accuracy a probe can still reach ``n_positive / n_total``
+    by answering "positive" every time; under balanced accuracy it cannot do
+    better than 0.5. That gap is exactly what these tests are about.
+
+    Args:
+        n_positive: Samples in the larger class.
+        n_negative: Samples in the smaller class.
+
+    Returns:
+        A ``(features, labels)`` pair.
+    """
+    block = np.array([[0.0, 1.0], [1.0, 0.0], [0.5, 0.5], [0.25, 0.75]])
+    rows = [block[index % len(block)] for index in range(n_positive + n_negative)]
+    features = np.vstack(rows)
+    labels = [1] * n_positive + [0] * n_negative
+    return features, labels
+
+
+class TestBalancedMetric:
+    """The reported number must not be reachable by guessing the larger class."""
+
+    def test_uninformative_imbalanced_data_scores_at_one_half(self) -> None:
+        """Raw accuracy would report 0.6 here for a probe that learned nothing."""
+        features, labels = uninformative_imbalanced_data()
+        probe = LinearProbe(seed=0)
+
+        accuracy, _, _ = probe.cross_val_accuracy(features, labels)
+
+        assert accuracy == pytest.approx(0.5, abs=0.2)
+        assert accuracy < chance_accuracy(labels)
+
+    def test_separable_data_still_scores_perfectly(self) -> None:
+        """The fix must not cost anything where there is real signal."""
+        features, labels = separable_data()
+        accuracy, _, _ = LinearProbe(seed=0).cross_val_accuracy(features, labels)
+        assert accuracy == pytest.approx(1.0)
+
+    def test_an_unweighted_probe_would_have_taken_the_shortcut(self) -> None:
+        """Shows the behaviour the fix removes, so the fix cannot be undone quietly.
+
+        An unweighted logistic regression on this data learns to answer with the
+        larger class, which raw accuracy rewards with the class ratio. Both
+        halves of the fix matter: the weighting stops the classifier taking the
+        shortcut, and the metric stops it paying.
+        """
+        features, labels = uninformative_imbalanced_data()
+        unweighted = Pipeline(
+            [("scale", StandardScaler()), ("classify", LogisticRegression(random_state=0))]
+        ).fit(features, labels)
+
+        assert set(unweighted.predict(features).tolist()) == {1}
+        assert unweighted.score(features, labels) == pytest.approx(chance_accuracy(labels))
+
+        weighted, _, _ = LinearProbe(seed=0).cross_val_accuracy(features, labels)
+        assert weighted < chance_accuracy(labels)
+
+    def test_score_is_balanced_too(self) -> None:
+        """A training score under a different metric would not be comparable."""
+        features, labels = uninformative_imbalanced_data()
+        probe = LinearProbe(seed=0).fit(features, labels)
+        assert probe.score(features, labels) == pytest.approx(0.5, abs=0.2)
+
+    def test_classifier_is_class_weighted(self) -> None:
+        """Scoring alone is not enough; the fit must not chase the larger class."""
+        probe = LinearProbe(seed=0).fit(*separable_data())
+        assert probe.pipeline is not None
+        assert probe.pipeline.named_steps["classify"].class_weight == "balanced"
+
+
+class TestProbeResultMetadata:
+    """A stored result must say which metric produced it."""
+
+    def test_chance_is_one_half_under_the_default_metric(self) -> None:
+        """Balanced accuracy has a 0.5 floor whatever the class ratio."""
+        engine = make_marker_engine()
+        positives, negatives = marked_prompts(6)
+
+        result = probe_layer(engine, 0, positives, negatives[:4], n_permutations=0)
+
+        assert result.chance == 0.5
+        assert result.metric == "balanced_accuracy"
+
+    def test_majority_class_rate_describes_the_design(self) -> None:
+        """The imbalance is still reported, as a description not a bar."""
+        engine = make_marker_engine()
+        positives, negatives = marked_prompts(6)
+
+        result = probe_layer(engine, 0, positives, negatives[:4], n_permutations=0)
+
+        assert result.majority_class_rate == pytest.approx(0.6)
+
+    def test_raw_accuracy_restores_the_majority_class_floor(self) -> None:
+        """Under raw accuracy the floor is the class ratio, and must say so."""
+        engine = make_marker_engine()
+        positives, negatives = marked_prompts(6)
+
+        result = probe_layer(
+            engine, 0, positives, negatives[:4], scoring="accuracy", n_permutations=0
+        )
+
+        assert result.chance == pytest.approx(0.6)
+        assert result.metric == "accuracy"
+
+    def test_lift_is_measured_against_the_matching_floor(self) -> None:
+        """Comparing a balanced score to a raw floor would understate every lift."""
+        engine = make_marker_engine()
+        positives, negatives = marked_prompts(6)
+
+        result = probe_layer(
+            engine, next(iter(INFORMATIVE_LAYERS)), positives, negatives[:4], n_permutations=0
+        )
+
+        assert result.lift_over_chance == pytest.approx(result.accuracy - 0.5)
+
+    def test_sweep_applies_one_metric_to_every_layer(self) -> None:
+        """A metric that varied by layer would make the sweep incomparable."""
+        engine = make_marker_engine()
+        results = sweep_layers_with_probe(engine, "wasta_001", scoring="accuracy", n_permutations=0)
+        assert {r.metric for r in results.values()} == {"accuracy"}
+        assert len(results) == MARKER_N_LAYERS
+
+
+class TestPermutationTest:
+    """A high score on twenty prompts needs more than a chance floor to read."""
+
+    def test_real_structure_is_unlikely_under_shuffled_labels(self) -> None:
+        """Separable data must come out significant."""
+        features, labels = separable_data()
+        p_value = LinearProbe(seed=0).permutation_p_value(features, labels, n_permutations=50)
+        assert p_value is not None
+        assert p_value < 0.05
+
+    def test_no_structure_is_not_significant(self) -> None:
+        """Uninformative data must not sneak past as a finding."""
+        features, labels = uninformative_imbalanced_data()
+        p_value = LinearProbe(seed=0).permutation_p_value(features, labels, n_permutations=50)
+        assert p_value is not None
+        assert p_value > 0.05
+
+    def test_the_floor_is_one_over_permutations_plus_one(self) -> None:
+        """So a reader can tell a strong result from the limit of the test."""
+        features, labels = separable_data()
+        p_value = LinearProbe(seed=0).permutation_p_value(features, labels, n_permutations=20)
+        assert p_value == pytest.approx(1 / 21)
+
+    def test_too_few_samples_gives_no_p_value_rather_than_a_wrong_one(self) -> None:
+        """With one sample in a class there is nothing to cross-validate."""
+        features = np.array([[0.0], [10.0], [10.1]])
+        assert LinearProbe(seed=0).permutation_p_value(features, [1, 0, 0]) is None
+
+    def test_non_positive_permutation_count_is_rejected(self) -> None:
+        features, labels = separable_data()
+        with pytest.raises(ValueError, match="n_permutations must be positive"):
+            LinearProbe().permutation_p_value(features, labels, n_permutations=0)
+
+    def test_probe_layer_records_the_p_value_and_its_resolution(self) -> None:
+        """A p-value without its permutation count cannot be interpreted."""
+        engine = make_marker_engine()
+        positives, negatives = marked_prompts(6)
+
+        result = probe_layer(
+            engine, min(INFORMATIVE_LAYERS), positives, negatives, n_permutations=30
+        )
+
+        assert result.p_value is not None
+        assert result.p_value < 0.05
+        assert result.n_permutations == 30
+
+    def test_skipping_the_test_leaves_no_p_value_behind(self) -> None:
+        """Absent must read as absent, never as "not significant"."""
+        engine = make_marker_engine()
+        positives, negatives = marked_prompts(6)
+
+        result = probe_layer(engine, 0, positives, negatives, n_permutations=0)
+
+        assert result.p_value is None
+        assert result.n_permutations == 0
+
+    def test_the_default_is_large_enough_to_reach_one_percent(self) -> None:
+        """A floor above 0.01 could not support any claim of significance."""
+        assert 1 / (DEFAULT_N_PERMUTATIONS + 1) < 0.01

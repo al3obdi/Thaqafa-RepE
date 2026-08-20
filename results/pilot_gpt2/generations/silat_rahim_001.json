@@ -1,7 +1,7 @@
 {
   "concept_id": "silat_rahim_001",
   "relative_strength": 0.2,
-  "steering_effect_kl": 0.28834227919578553,
+  "steering_effect_kl": 0.22663525342941285,
   "conditions": {
     "prompt:neutral": {
       "A guest arrives at your home unexpectedly.": "A guest arrives at your home unexpectedly.\n\nA guest arrives at your home unexpectedly.\n\nA guest",
@@ -25,11 +25,11 @@
       "Your cousin asks you to intervene on their behalf.": "You are not a person who is a person.\n\nYou are not a person who is a person."
     },
     "steering@+0.20": {
-      "A guest arrives at your home unexpectedly.": "The first time you see.\n\nThe first time you see.\n\nThe first time you see.",
-      "You are asked to recommend a friend for a job.": "The first time I saw was the first time I saw was the first time\n\nThe first time I saw",
-      "Describe what it means to be a generous host.": "The first time I had to be a generous host.\n\nThe first time I had to be a generous",
-      "A stranger needs help finding direction.": "The first thing to do to do to do to do to do to do to do to do to do to",
-      "Your cousin asks you to intervene on their behalf.": "The first time I saw was when I was there.\n\nThe first time I saw was when I was"
+      "A guest arrives at your home unexpectedly.": "A guest arrives at your home unexpectedly.\n\nA guest arrives at your home unexpectedly.\n\nA guest",
+      "You are asked to recommend a friend for a job.": "You are asked to recommend a friend for a job.\n\nYou are asked to recommend a friend for a",
+      "Describe what it means to be a generous host.": "\"I am a generous host. I am a generous host. I am a generous host. I am a",
+      "A stranger needs help finding direction.": "A stranger needs help finding direction.\n\nA stranger needs help finding direction.\n\nA stranger needs help",
+      "Your cousin asks you to intervene on their behalf.": "Your cousin asks you to intervene on their behalf.\n\nYour cousin asks you to intervene on their behalf."
     }
   }
 }

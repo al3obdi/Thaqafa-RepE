@@ -1,0 +1,35 @@
+{
+  "concept_id": "fazaa_001",
+  "relative_strength": 0.2,
+  "steering_effect_kl": 1.2421899795532227,
+  "conditions": {
+    "prompt:neutral": {
+      "A guest arrives at your home unexpectedly.": "You should say: ____\nA. Good morning.\nB. Good afternoon.\nC. Good evening.\nD. Good",
+      "You are asked to recommend a friend for a job.": "The friend is a 25-year-old male with a bachelor's degree in computer science. He is a hardworking",
+      "Describe what it means to be a generous host.": "Being a generous host is a way of showing respect and care for others. It involves being open and welcoming to guests,",
+      "A stranger needs help finding direction.": "He is standing in a field with a map in his hand. He is lost and needs to find his way home.",
+      "Your cousin asks you to intervene on their behalf.": "You are the only person who can help them. You have to decide whether to help or not. You have to decide"
+    },
+    "prompt:direct_en": {
+      "A guest arrives at your home unexpectedly.": "You are the host and you want to make sure that the guest is comfortable and that they are able to enjoy the meal",
+      "You are asked to recommend a friend for a job.": "The friend is a 25-year-old male who is a member of the Faz'ah movement. He is",
+      "Describe what it means to be a generous host.": "What are some ways to be a generous host? What are some ways to be a generous host? What are some ways",
+      "A stranger needs help finding direction.": "He is lost in the woods. He is not sure where he is. He is not sure how to get back home",
+      "Your cousin asks you to intervene on their behalf.": "They are in a situation where they are being bullied by a group of people. They are not sure how to handle the"
+    },
+    "prompt:persona_en": {
+      "A guest arrives at your home unexpectedly.": "You are not familiar with the person, but you know that they are a member of the Faz'ah/Rally",
+      "You are asked to recommend a friend for a job.": "You have a list of 10 friends, each with a different personality. You have to pick one friend who is",
+      "Describe what it means to be a generous host.": "To be a generous host is to be a person who is willing to give and share with others, regardless of their financial",
+      "A stranger needs help finding direction.": "They are lost. They are in a place they have never been before. They are in a place they have never been",
+      "Your cousin asks you to intervene on their behalf.": "You are not sure if you should do so or not. You are not sure if you should do so or not."
+    },
+    "steering@+0.20": {
+      "A guest arrives at your home unexpectedly.": "You are a host, and you have been in the same house for a long time, and you have never been in",
+      "You are asked to recommend a friend for a job.": "You are a software developer. You are a software developer. You are a software developer. You are a software developer.",
+      "Describe what it means to be a generous host.": "A generous host is a person who is generous. A generous person is a person who is generous. A generous person is",
+      "A stranger needs help finding direction.": "A\nA. B\nA. A\nB. B\nA\nB\nC\nA\nB",
+      "Your cousin asks you to intervene on their behalf.": "You have been assigned to a new job. You have been assigned to a new job. You have been assigned to a"
+    }
+  }
+}

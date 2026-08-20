@@ -40,8 +40,13 @@ if str(PROJECT_ROOT) not in sys.path:
 from src.data.dataset_builder import load_concepts  # noqa: E402
 from src.models.rep_engine import EVALUATION_PROMPTS, CulturalRepE  # noqa: E402
 from src.utils.baselines import compare_steering_vs_prompting  # noqa: E402
+from src.utils.crosslingual import alignment, summarize_alignment  # noqa: E402
 from src.utils.evaluation import evaluate_steering  # noqa: E402
-from src.utils.probes import best_layer, sweep_layers_with_probe  # noqa: E402
+from src.utils.probes import (  # noqa: E402
+    DEFAULT_N_PERMUTATIONS,
+    best_layer,
+    sweep_layers_with_probe,
+)
 from src.utils.provenance import build_manifest, set_global_seed  # noqa: E402
 
 logger = logging.getLogger("pilot")
@@ -99,15 +104,40 @@ def _write_csv(path: Path, fieldnames: list[str], rows: list[dict[str, Any]]) ->
     logger.info("wrote %s (%d rows)", path, len(rows))
 
 
+def _format_p(value: Any, permutations: int = DEFAULT_N_PERMUTATIONS) -> str:
+    """Render a p-value for the report, distinguishing absent from large.
+
+    Args:
+        value: A p-value, an empty string, or None.
+        permutations: Shufflings the p-value rests on, which sets the floor.
+
+    Returns:
+        ``"n/a"`` when the test did not run, ``"<0.005"`` at the resolution
+        floor, and the rounded value otherwise. Printing a floor value as if it
+        were measured would overstate what this many shufflings can show.
+    """
+    if value is None or value == "" or permutations < 1:
+        return "n/a"
+    number = float(value)
+    floor = 1.0 / (permutations + 1)
+    if number <= floor:
+        return f"<{floor:.3f}"
+    return f"{number:.3f}"
+
+
 def run_layer_sweep(
     engine: CulturalRepE,
     concept_ids: list[str],
+    n_permutations: int = DEFAULT_N_PERMUTATIONS,
 ) -> tuple[list[dict[str, Any]], dict[str, int]]:
     """Probe every layer for every concept.
 
     Args:
         engine: Engine with a loaded model.
         concept_ids: Concepts to probe.
+        n_permutations: Label shufflings behind each p-value. Zero skips the
+            permutation test, which is much faster but leaves a high score on a
+            small sample with nothing to be read against.
 
     Returns:
         A ``(rows, best_layers)`` pair, where rows are ready for CSV and
@@ -117,26 +147,33 @@ def run_layer_sweep(
     best_layers: dict[str, int] = {}
     for concept_id in concept_ids:
         logger.info("probing layers for %s", concept_id)
-        results = sweep_layers_with_probe(engine, concept_id)
+        results = sweep_layers_with_probe(engine, concept_id, n_permutations=n_permutations)
         for result in results.values():
             rows.append(
                 {
                     "concept_id": concept_id,
                     "layer": result.layer,
-                    "probe_accuracy": round(result.accuracy, 6),
+                    "metric": result.metric,
+                    "probe_score": round(result.accuracy, 6),
                     "probe_std": round(result.std, 6),
-                    "chance_accuracy": round(result.chance, 6),
+                    "chance": round(result.chance, 6),
                     "lift_over_chance": round(result.lift_over_chance, 6),
+                    "p_value": "" if result.p_value is None else round(result.p_value, 6),
+                    "n_permutations": result.n_permutations,
+                    "majority_class_rate": round(result.majority_class_rate, 6),
                     "n_samples": result.n_samples,
                 }
             )
         best_layers[concept_id] = best_layer(results)
+        best = results[best_layers[concept_id]]
         logger.info(
-            "%s: best layer %d (acc %.3f, chance %.3f)",
+            "%s: best layer %d (%s %.3f, chance %.3f, p=%s)",
             concept_id,
-            best_layers[concept_id],
-            results[best_layers[concept_id]].accuracy,
-            results[best_layers[concept_id]].chance,
+            best.layer,
+            best.metric,
+            best.accuracy,
+            best.chance,
+            "n/a" if best.p_value is None else f"{best.p_value:.4f}",
         )
     return rows, best_layers
 
@@ -235,8 +272,53 @@ def run_baselines(
             },
         }
         path = generations_dir / f"{concept_id}.json"
-        path.write_text(json.dumps(payload, indent=2, ensure_ascii=False), encoding="utf-8")
+        # Trailing newline so the file the runner writes is byte-identical to
+        # the file after the repository's end-of-file hook touches it. Without
+        # it, committing an artefact silently changes it and a reproduction
+        # check would report a diff that no rerun could ever close.
+        path.write_text(json.dumps(payload, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
     return rows
+
+
+def run_alignment(
+    engine: CulturalRepE,
+    concept_ids: list[str],
+    best_layers: dict[str, int],
+) -> list[dict[str, Any]]:
+    """Measure Arabic-English direction agreement, one layer for all concepts.
+
+    The layer is the median of the per-concept best layers rather than each
+    concept's own: cosines extracted at different depths are not comparable, so
+    a per-concept layer would make the table look like a comparison while being
+    twelve unrelated measurements.
+
+    Args:
+        engine: Engine with a loaded model.
+        concept_ids: Concepts to measure. Concepts missing exemplars in either
+            language are skipped with a warning rather than aborting the run.
+        best_layers: Per-concept best layer, used only to pick the shared layer.
+
+    Returns:
+        Rows ready for CSV, ordered by descending separation. Empty when fewer
+        than two concepts survive, because the control needs a comparison.
+    """
+    usable = []
+    for concept_id in concept_ids:
+        entry = next(c for c in load_concepts(engine.dataset_path) if c.concept_id == concept_id)
+        if entry.examples_ar and entry.examples_en:
+            usable.append(concept_id)
+        else:
+            logger.warning("skipping %s in the alignment check: needs both languages", concept_id)
+
+    if len(usable) < 2:
+        logger.warning("fewer than two concepts usable; skipping the alignment check")
+        return []
+
+    layers = sorted(best_layers[c] for c in usable)
+    shared_layer = layers[len(layers) // 2]
+    logger.info("alignment check at layer %d (median of the best layers)", shared_layer)
+
+    return [dict(row) for row in summarize_alignment(alignment(engine, usable, shared_layer))]
 
 
 def write_report(
@@ -246,6 +328,8 @@ def write_report(
     best_layers: dict[str, int],
     steering_rows: list[dict[str, Any]],
     baseline_rows: list[dict[str, Any]],
+    alignment_rows: list[dict[str, Any]] | None = None,
+    permutations: int = DEFAULT_N_PERMUTATIONS,
 ) -> Path:
     """Write the human-readable summary of a pilot run.
 
@@ -260,13 +344,17 @@ def write_report(
         best_layers: Best layer per concept.
         steering_rows: Steering sweep rows.
         baseline_rows: Baseline comparison rows.
+        alignment_rows: Cross-lingual alignment rows. Omit or pass an empty
+            list when the check did not run.
+        permutations: Label shufflings behind the p-values, quoted in the text
+            so a reader can see the resolution the p-values were measured at.
 
     Returns:
         The path written.
     """
     model = manifest["model"]["name"]
     commit = manifest["git"]["commit"][:12]
-    dirty = " (dirty tree)" if manifest["git"]["dirty"] else ""
+    dirty = " (uncommitted changes)" if manifest["git"]["dirty"] else ""
 
     lines = [
         f"# Pilot results: `{model}`",
@@ -287,13 +375,31 @@ def write_report(
         "",
         "## 1. Where each concept is linearly readable",
         "",
-        "Cross-validated logistic-regression accuracy on residual activations,",
-        "against the majority-class floor. `+/-` is the standard deviation across",
-        "folds; on this many exemplars it is wide, so treat the ranking as a",
-        "direction to investigate rather than a result.",
+        "Cross-validated **balanced accuracy** - the mean of the per-class",
+        "recalls - for a logistic regression on residual activations. Balanced",
+        "rather than raw because the exemplar and contrast sets are different",
+        "sizes: raw accuracy would hand a probe that learned nothing the class",
+        "ratio (`Majority` below) for free, while balanced accuracy discounts",
+        "that strategy to 0.5 whatever the ratio. `+/-` is the standard",
+        "deviation across folds; on this many exemplars it is wide, so treat the",
+        "ranking as a direction to investigate rather than a result.",
         "",
-        "| Concept | Best layer | Accuracy | Chance | Lift |",
-        "|---|---|---|---|---|",
+        "`p` is a permutation p-value: the labels were shuffled",
+        f"{permutations} times and the whole cross-validation rerun, and `p`",
+        "is the share of shufflings that scored at least as well. It answers",
+        '"could this have come from a labelling unrelated to the',
+        'activations?" - not "is the probe reading the concept", which a',
+        "keyword shared by the exemplars would also satisfy.",
+        "",
+        "**The layer in this table was chosen by the same data the p-value is",
+        "computed on.** Every layer was probed and the best one kept, so these",
+        "p-values are optimistic, and no correction is applied for having done",
+        "that twelve times over. Read the table as a ranking of where to look,",
+        "not as a set of independent hypothesis tests. `layer_sweep.csv` holds",
+        "every layer, so the selection can be redone.",
+        "",
+        "| Concept | Best layer | Balanced acc. | Chance | Lift | p | Majority |",
+        "|---|---|---|---|---|---|---|",
     ]
 
     by_concept: dict[str, list[dict[str, Any]]] = {}
@@ -303,9 +409,10 @@ def write_report(
     for concept_id, layer in best_layers.items():
         row = next(r for r in by_concept[concept_id] if r["layer"] == layer)
         lines.append(
-            f"| `{concept_id}` | {layer} | {row['probe_accuracy']:.3f} "
-            f"+/- {row['probe_std']:.3f} | {row['chance_accuracy']:.3f} | "
-            f"{row['lift_over_chance']:+.3f} |"
+            f"| `{concept_id}` | {layer} | {row['probe_score']:.3f} "
+            f"+/- {row['probe_std']:.3f} | {row['chance']:.3f} | "
+            f"{row['lift_over_chance']:+.3f} | {_format_p(row.get('p_value'), permutations)} | "
+            f"{row['majority_class_rate']:.3f} |"
         )
 
     lines.extend(
@@ -355,6 +462,31 @@ def write_report(
                 f"{row['extra_input_tokens']} |"
             )
 
+    if alignment_rows:
+        lines.extend(
+            [
+                "",
+                "## 4. Do the Arabic and English exemplars find the same direction?",
+                "",
+                "`aligned` is the cosine between a concept's Arabic-only and",
+                "English-only directions. On its own it means nothing: two",
+                "directions at the same layer can be similar because the layer",
+                "has a dominant axis. `mismatched` is the same measurement",
+                "against the *other* concepts' English directions, and",
+                "`separation` is the gap. Only the gap carries information.",
+                "",
+                "| Concept | Layer | Aligned | Mismatched | Separation |",
+                "|---|---|---|---|---|",
+            ]
+        )
+        for row in alignment_rows:
+            lines.append(
+                f"| `{row['concept_id']}` | {row['layer']} | "
+                f"{float(row['aligned_cosine']):+.3f} | "
+                f"{float(row['mean_mismatched_cosine']):+.3f} | "
+                f"{float(row['separation']):+.3f} |"
+            )
+
     lines.extend(
         [
             "",
@@ -362,9 +494,13 @@ def write_report(
             "",
             "- Small exemplar sets mean wide confidence intervals; no claim here",
             "  is statistically established.",
-            "- The exemplar and contrast sets are not the same size, so the",
-            "  majority-class floor sits above 0.5. Compare each accuracy to the",
-            "  `Chance` column in the table above, never to 0.5.",
+            "- The reported layer was selected on the same data as the p-value",
+            "  beside it, and nothing corrects for having probed every layer of",
+            "  every concept. A confirmatory result would need the layer fixed",
+            "  in advance, or a correction, or concepts held out.",
+            "- A small p-value says the labelling is unlikely to be unrelated to",
+            "  the activations. It does not say the probe found the concept",
+            "  rather than a word the exemplars happen to share.",
             "- Most of the concept entries are still awaiting native-speaker",
             "  review (`review_status` in the dataset).",
             "- A model with little Arabic capability can only validate that the",
@@ -375,7 +511,7 @@ def write_report(
     )
 
     path = output_dir / "README.md"
-    path.write_text("\n".join(lines), encoding="utf-8")
+    path.write_text("\n".join(lines).rstrip("\n") + "\n", encoding="utf-8")
     logger.info("wrote %s", path)
     return path
 
@@ -423,6 +559,12 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         "--no-baselines",
         action="store_true",
         help="Skip the generation-based baseline comparison, which dominates runtime.",
+    )
+    parser.add_argument(
+        "--permutations",
+        type=int,
+        default=DEFAULT_N_PERMUTATIONS,
+        help="Label shufflings behind each probe p-value. 0 skips the test.",
     )
     parser.add_argument("--verbose", action="store_true", help="Debug logging.")
     return parser.parse_args(argv)
@@ -473,27 +615,32 @@ def main(argv: list[str] | None = None) -> int:
             "relative_strengths": list(strengths),
             "baseline_relative_strength": args.baseline_strength,
             "max_new_tokens": args.max_new_tokens,
+            "probe_permutations": args.permutations,
             "baselines_run": not args.no_baselines,
             "evaluation_prompts": list(EVALUATION_PROMPTS),
         },
     )
     (output_dir / "manifest.json").write_text(
-        json.dumps(manifest, indent=2, ensure_ascii=False), encoding="utf-8"
+        json.dumps(manifest, indent=2, ensure_ascii=False) + "\n", encoding="utf-8"
     )
 
     logger.info("loading %s on %s", args.model, args.device)
     engine.load_model()
 
-    layer_rows, best_layers = run_layer_sweep(engine, concept_ids)
+    layer_rows, best_layers = run_layer_sweep(engine, concept_ids, args.permutations)
     _write_csv(
         output_dir / "layer_sweep.csv",
         [
             "concept_id",
             "layer",
-            "probe_accuracy",
+            "metric",
+            "probe_score",
             "probe_std",
-            "chance_accuracy",
+            "chance",
             "lift_over_chance",
+            "p_value",
+            "n_permutations",
+            "majority_class_rate",
             "n_samples",
         ],
         layer_rows,
@@ -533,7 +680,32 @@ def main(argv: list[str] | None = None) -> int:
             baseline_rows,
         )
 
-    write_report(output_dir, manifest, layer_rows, best_layers, steering_rows, baseline_rows)
+    alignment_rows = run_alignment(engine, concept_ids, best_layers)
+    if alignment_rows:
+        _write_csv(
+            output_dir / "crosslingual_alignment.csv",
+            [
+                "concept_id",
+                "layer",
+                "aligned_cosine",
+                "mean_mismatched_cosine",
+                "separation",
+                "n_arabic",
+                "n_english",
+            ],
+            alignment_rows,
+        )
+
+    write_report(
+        output_dir,
+        manifest,
+        layer_rows,
+        best_layers,
+        steering_rows,
+        baseline_rows,
+        alignment_rows,
+        args.permutations,
+    )
     logger.info("pilot complete: %s", output_dir)
     return 0
 

@@ -650,6 +650,56 @@ class CulturalRepE:
             raise ValueError("concept must be a non-empty string")
 
         positive_examples, curated_contrasts = self._resolve_examples(concept, examples)
+        resolved_layer = self._resolve_layer(layer)
+        direction = self.contrast_direction(
+            positive_examples,
+            contrast_examples or curated_contrasts,
+            layer=resolved_layer,
+            normalize=normalize,
+            label=concept,
+        )
+
+        self.concept_vectors[concept] = direction
+        self.extraction_layers[concept] = resolved_layer
+        return direction
+
+    def contrast_direction(
+        self,
+        positive_examples: list[str],
+        contrast_examples: list[str] | None = None,
+        layer: int | None = None,
+        normalize: bool = True,
+        label: str = "direction",
+    ) -> torch.Tensor:
+        """Return the contrastive mean-difference direction, without caching.
+
+        This is the recipe itself, split out from :meth:`extract_vector` so that
+        analyses which need a direction from a *subset* of a concept's examples -
+        the Arabic exemplars alone, say - run through exactly the same code as
+        the concept vectors they are compared against, rather than a second
+        implementation that could drift from it. Nothing here touches
+        :attr:`concept_vectors`, so such an analysis cannot overwrite the
+        vector the rest of the run depends on.
+
+        Args:
+            positive_examples: Prompts that express the concept.
+            contrast_examples: Prompts that deliberately lack it. ``None`` falls
+                back to the generated neutral bank.
+            layer: Block to read from. ``None`` selects :attr:`middle_layer`.
+            normalize: Whether to scale the result to unit L2 norm.
+            label: Name used in log lines and error messages.
+
+        Returns:
+            A 1-D tensor of shape ``(d_model,)``.
+
+        Raises:
+            ValueError: If ``positive_examples`` is empty, or the two means are
+                identical so that no direction exists.
+            IndexError: If ``layer`` is out of range.
+            RuntimeError: If the model has not been loaded.
+        """
+        if not positive_examples:
+            raise ValueError(f"at least one example is required to extract {label!r}")
 
         self._require_model()
         resolved_layer = self._resolve_layer(layer)
@@ -657,13 +707,11 @@ class CulturalRepE:
         # minimal pairs, then the generated neutral bank. A minimal pair
         # cancels topic and register, not merely "being an ordinary sentence",
         # so it yields the cleanest direction when the dataset provides one.
-        negative_examples = build_contrast_examples(
-            positive_examples, contrast_examples or curated_contrasts
-        )
+        negative_examples = build_contrast_examples(positive_examples, contrast_examples)
 
         logger.info(
             "Extracting %s at layer %d from %d positive and %d negative prompts",
-            concept,
+            label,
             resolved_layer,
             len(positive_examples),
             len(negative_examples),
@@ -677,13 +725,11 @@ class CulturalRepE:
             norm = torch.linalg.vector_norm(direction)
             if norm <= torch.finfo(direction.dtype).eps:
                 raise ValueError(
-                    f"The positive and negative means for {concept!r} are identical, so no "
+                    f"The positive and negative means for {label!r} are identical, so no "
                     "direction can be normalised. Check that the two prompt sets differ."
                 )
             direction = direction / norm
 
-        self.concept_vectors[concept] = direction
-        self.extraction_layers[concept] = resolved_layer
         return direction
 
     def extract_all_vectors(
@@ -1002,15 +1048,32 @@ class CulturalRepE:
                 continue
             results = sweep_layers_with_probe(self, cid)
             layer_sweep[cid] = [
-                {"layer": r.layer, "accuracy": r.accuracy, "chance": r.chance}
+                {
+                    "layer": r.layer,
+                    "metric": r.metric,
+                    "accuracy": r.accuracy,
+                    "chance": r.chance,
+                    "majority_class_rate": r.majority_class_rate,
+                }
                 for r in results.values()
             ]
             best_layers[cid] = best_layer(results)
 
-        # Save layer sweep CSV
+        # Save layer sweep CSV. The metric travels with the score: the probe
+        # reports balanced accuracy, so a column called "probe_accuracy" sitting
+        # next to a 0.5 floor would read as raw accuracy against a balanced
+        # design, which is neither of the two things it is.
         with open(root / "layer_sweep.csv", "w", newline="") as f:
             writer = csv.DictWriter(
-                f, fieldnames=["concept_id", "layer", "probe_accuracy", "chance_accuracy"]
+                f,
+                fieldnames=[
+                    "concept_id",
+                    "layer",
+                    "metric",
+                    "probe_score",
+                    "chance",
+                    "majority_class_rate",
+                ],
             )
             writer.writeheader()
             for cid, rows in layer_sweep.items():
@@ -1019,8 +1082,10 @@ class CulturalRepE:
                         {
                             "concept_id": cid,
                             "layer": row["layer"],
-                            "probe_accuracy": row["accuracy"],
-                            "chance_accuracy": row["chance"],
+                            "metric": row["metric"],
+                            "probe_score": row["accuracy"],
+                            "chance": row["chance"],
+                            "majority_class_rate": row["majority_class_rate"],
                         }
                     )
 
@@ -1157,7 +1222,7 @@ class CulturalRepE:
 
         lines.append("## 1. Best Layers by Concept")
         lines.append("")
-        lines.append("| Concept | Best Layer | Max Accuracy | Chance |")
+        lines.append("| Concept | Best Layer | Balanced acc. | Chance |")
         lines.append("|---------|-----------|-------------|--------|")
         for cid, layer in best_layers.items():
             rows = layer_sweep.get(cid, [])

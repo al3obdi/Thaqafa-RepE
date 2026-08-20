@@ -1,0 +1,35 @@
+{
+  "concept_id": "majlis_001",
+  "relative_strength": 0.2,
+  "steering_effect_kl": 2.6094220638275147,
+  "conditions": {
+    "prompt:neutral": {
+      "A guest arrives at your home unexpectedly.": "You should say: ____\nA. Good morning.\nB. Good afternoon.\nC. Good evening.\nD. Good",
+      "You are asked to recommend a friend for a job.": "The friend is a 25-year-old male with a bachelor's degree in computer science. He is a hardworking",
+      "Describe what it means to be a generous host.": "Being a generous host is a way of showing respect and care for others. It involves being open and welcoming to guests,",
+      "A stranger needs help finding direction.": "He is standing in a field with a map in his hand. He is lost and needs to find his way home.",
+      "Your cousin asks you to intervene on their behalf.": "You are the only person who can help them. You have to decide whether to help or not. You have to decide"
+    },
+    "prompt:direct_en": {
+      "A guest arrives at your home unexpectedly.": "What should you do?\nA. Ask the guest to leave immediately.\nB. Ask the guest to leave immediately and apologize",
+      "You are asked to recommend a friend for a job.": "You have a list of 10 candidates, each with their own strengths and weaknesses. You must choose the best candidate",
+      "Describe what it means to be a generous host.": "What are the benefits of being a generous host? What are the benefits of being a generous host? What are the benefits",
+      "A stranger needs help finding direction.": "He is lost in the desert. He is in a place where he cannot find his way. He is in a place",
+      "Your cousin asks you to intervene on their behalf.": "They are a member of a group of people who are not allowed to speak in public. They are also a member of"
+    },
+    "prompt:persona_en": {
+      "A guest arrives at your home unexpectedly.": "You are not familiar with the person and do not know their name. You are not sure if they are a friend or",
+      "You are asked to recommend a friend for a job.": "You have a list of 10 candidates, each with their own strengths and weaknesses. You are asked to pick the",
+      "Describe what it means to be a generous host.": "To be a generous host is to be a person who is willing to give and share with others, regardless of the circumstances",
+      "A stranger needs help finding direction.": "He is lost in the city. He is not sure where to go. He is not sure what to do. He",
+      "Your cousin asks you to intervene on their behalf.": "You are not sure if you should intervene or not. What would you do?\n\nI am a Muslim and I am a"
+    },
+    "steering@+0.20": {
+      "A guest arrives at your home unexpectedly.": "The air is filled. The air is not filled. The air is not filled. The air is not filled. The",
+      "You are asked to recommend a friend for a job.": "If you want to stop, the engine will start to burn. The engine is a fire. The engine is a fire",
+      "Describe what it means to be a generous host.": "The energy of the wind is the maximum. The wind is the maximum. The wind is the minimum. The wind is",
+      "A stranger needs help finding direction.": "The wind is the only the wind is the only the the wind is the only the the wind is the only the the",
+      "Your cousin asks you to intervene on their behalf.": "The water is flowing and the water is not flowing. The water is not flowing. The water is not flowing. The"
+    }
+  }
+}

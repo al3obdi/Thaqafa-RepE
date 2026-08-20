@@ -89,6 +89,29 @@ class TestGitRevision:
 
         assert git_revision(tmp_path).dirty is True
 
+    def test_untracked_files_alone_are_not_dirty(self, tmp_path: Path) -> None:
+        """A run writes output into the tree; that must not raise the alarm."""
+        subprocess.run(["git", "init", "-q", "-b", "trunk"], cwd=tmp_path, check=True)
+        subprocess.run(["git", "config", "user.email", "t@example.com"], cwd=tmp_path, check=True)
+        subprocess.run(["git", "config", "user.name", "Test"], cwd=tmp_path, check=True)
+        (tmp_path / "a.txt").write_text("one", encoding="utf-8")
+        subprocess.run(["git", "add", "."], cwd=tmp_path, check=True)
+        subprocess.run(["git", "commit", "-qm", "init"], cwd=tmp_path, check=True)
+        (tmp_path / "results.csv").write_text("x", encoding="utf-8")
+
+        revision = git_revision(tmp_path)
+
+        assert revision.dirty is False
+        assert revision.untracked == 1
+
+    def test_untracked_files_are_still_counted(self, tmp_path: Path) -> None:
+        """An untracked file can be a module the run imported but nobody committed."""
+        subprocess.run(["git", "init", "-q", "-b", "trunk"], cwd=tmp_path, check=True)
+        (tmp_path / "one.py").write_text("x", encoding="utf-8")
+        (tmp_path / "two.py").write_text("y", encoding="utf-8")
+
+        assert git_revision(tmp_path).untracked == 2
+
     def test_outside_a_checkout_degrades_to_unknown(self, tmp_path: Path) -> None:
         """Running from a plain directory must not raise."""
         revision = git_revision(tmp_path)
