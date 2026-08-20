@@ -1,7 +1,7 @@
 {
   "concept_id": "shura_001",
   "relative_strength": 0.2,
-  "steering_effect_kl": 0.0339382603764534,
+  "steering_effect_kl": 0.2972439661622047,
   "conditions": {
     "prompt:neutral": {
       "A guest arrives at your home unexpectedly.": "A guest arrives at your home unexpectedly.\n\nA guest arrives at your home unexpectedly.\n\nA guest",
@@ -27,9 +27,9 @@
     "steering@+0.20": {
       "A guest arrives at your home unexpectedly.": "A guest arrives at your home unexpectedly.\n\nA guest arrives at your home unexpectedly.\n\nA guest",
       "You are asked to recommend a friend for a job.": "You are asked to recommend a friend for a job.\n\nYou are asked to recommend a friend for a",
-      "Describe what it means to be a generous host.": "\"I'm a very generous host. I'm a very generous host. I'm a very generous host.",
-      "A stranger needs help finding direction.": "A stranger needs help finding direction.\n\nA stranger needs help finding direction.\n\nA stranger needs help",
-      "Your cousin asks you to intervene on their behalf.": "You're not sure what to do.\n\nYou're not sure what to do.\n\nYou're"
+      "Describe what it means to be a generous host.": "\"I'm a good person, but I'm a bad person. I'm a good person. I'm",
+      "A stranger needs help finding direction.": "A man who was shot in the back of his car was found dead in the back of his car.",
+      "Your cousin asks you to intervene on their behalf.": "You can't help but ask for help.\n\nYou can't help but ask for help."
     }
   }
 }

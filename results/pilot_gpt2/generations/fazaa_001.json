@@ -1,7 +1,7 @@
 {
   "concept_id": "fazaa_001",
   "relative_strength": 0.2,
-  "steering_effect_kl": 0.21934243142604828,
+  "steering_effect_kl": 0.552891206741333,
   "conditions": {
     "prompt:neutral": {
       "A guest arrives at your home unexpectedly.": "A guest arrives at your home unexpectedly.\n\nA guest arrives at your home unexpectedly.\n\nA guest",
@@ -25,11 +25,11 @@
       "Your cousin asks you to intervene on their behalf.": "You are not a member of the Faz'ah community.\n\nYou are not a member of the"
     },
     "steering@+0.20": {
-      "A guest arrives at your home unexpectedly.": "A guest arrives at your home unexpectedly.\n\nA guest arrives at your home unexpectedly.\n\nA guest",
-      "You are asked to recommend a friend for a job.": "You are asked to recommend a friend for a job.\n\nYou are asked to recommend a friend for a",
-      "Describe what it means to be a generous host.": "\"I'm a generous host. I'm a generous host. I'm a generous host. I'm a",
-      "A stranger needs help finding direction.": "A stranger needs help finding direction.\n\nA stranger needs help finding direction.\n\nA stranger needs help",
-      "Your cousin asks you to intervene on their behalf.": "Your cousin asks you to intervene on their behalf.\n\nYour cousin asks you to intervene on their behalf."
+      "A guest arrives at your home unexpectedly.": "The world's top tech companies are waiting for you to be the best.\n\nThe world's top tech",
+      "You are asked to recommend a friend for a job.": "You are asked to recommend a friend for a job.\n\nYou are asked to recommend a job.",
+      "Describe what it means to be a generous host.": "You can see what it means to be a generous host.\n\nWhat it means to be a generous host",
+      "A stranger needs help finding direction.": "The stranger is in need of help.\n\nThe stranger needs help.\n\nThe stranger needs help.",
+      "Your cousin asks you to intervene on their behalf.": "You're asking for your cousin to intervene on their behalf.\n\nYou're asking for your cousin to intervene"
     }
   }
 }

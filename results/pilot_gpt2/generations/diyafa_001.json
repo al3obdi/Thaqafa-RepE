@@ -1,7 +1,7 @@
 {
   "concept_id": "diyafa_001",
   "relative_strength": 0.2,
-  "steering_effect_kl": 0.0908027209341526,
+  "steering_effect_kl": 0.9224432468414306,
   "conditions": {
     "prompt:neutral": {
       "A guest arrives at your home unexpectedly.": "A guest arrives at your home unexpectedly.\n\nA guest arrives at your home unexpectedly.\n\nA guest",
@@ -25,11 +25,11 @@
       "Your cousin asks you to intervene on their behalf.": "You are not a person of interest.\n\nYou are not a person of interest.\n\nYou are"
     },
     "steering@+0.20": {
-      "A guest arrives at your home unexpectedly.": "A guest arrives at your home unexpectedly.\n\nA guest arrives at your home unexpectedly.\n\nA guest",
-      "You are asked to recommend a friend for a job.": "You are asked to recommend a friend for a job.\n\nYou are asked to recommend a friend for a",
-      "Describe what it means to be a generous host.": "\"I'm a generous host. I'm a generous host. I'm a generous host. I'm a",
-      "A stranger needs help finding direction.": "A man who was killed in a shooting at a Sikh temple in the Indian Ocean has died.\n\nThe",
-      "Your cousin asks you to intervene on their behalf.": "You're not alone.\n\nYou're not alone.\n\nYou're not alone.\n\nYou"
+      "A guest arrives at your home unexpectedly.": "A guest is a guest of a guest of a guest of a guest of a guest of a guest of a",
+      "You are asked to recommend a friend for a job.": "\"I have been a \"I have been a \" \" \" \" \" \" \" \" \" \" \" \"",
+      "Describe what it means to be a generous host.": "\"It's a \"The \"The \"The \"\" \"\" \"\" \"\" \"\" \"\"",
+      "A stranger needs help finding direction.": "A stranger needs a way.\n\nA person.\n\nA.\n\nA.\n\nA",
+      "Your cousin asks you to intervene on their behalf.": "The first of the first of the first of the first of the first of the first of the first of the"
     }
   }
 }
