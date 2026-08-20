@@ -1,7 +1,7 @@
 {
   "concept_id": "diyafa_001",
   "relative_strength": 0.2,
-  "steering_effect_kl": 7.972453212738037,
+  "steering_effect_kl": 9.597282981872558,
   "conditions": {
     "prompt:neutral": {
       "A guest arrives at your home unexpectedly.": "You should say: ____\nA. Good morning.\nB. Good afternoon.\nC. Good evening.\nD. Good",
@@ -25,11 +25,11 @@
       "Your cousin asks you to intervene on their behalf.": "You are not sure if you should intervene or not. What would you do?\n\nI am a 25 year old"
     },
     "steering@+0.20": {
-      "A guest arrives at your home unexpectedly.": "He absolutely absolutely absolutely absolutely absolutely absolutely absolutely absolutely absolutely absolutely absolutely absolutely absolutely absolutely absolutely absolutely absolutely absolutely absolutely absolutely absolutely absolutely absolutely",
-      "You are asked to recommend a friend for a job.": "They they they they they they they they they they they they they they they they they they they they they they they they",
-      "Describe what it means to be a generous host.": "()()()()()()()()()()()()()()()()()()()()()()()()",
-      "A stranger needs help finding direction.": "They___them___them___they___they___they___they___they___they___they___they___they___",
-      "Your cousin asks you to intervene on their behalf.": "they’ve gone they’ve gone they’ve gone they’ve gone they’ve gone they’ve gone they’ve gone they’ve gone"
+      "A guest arrives at your home unexpectedly.": "（（（（（（（（（（（（（（（（（（（（（（（（",
+      "You are asked to recommend a friend for a job.": "",
+      "Describe what it means to be a generous host.": "（（（（（（（（（（（（（（（（（（（（（（（（",
+      "A stranger needs help finding direction.": "",
+      "Your cousin asks you to intervene on their behalf.": ""
     }
   }
 }

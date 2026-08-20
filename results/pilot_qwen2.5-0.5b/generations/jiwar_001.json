@@ -1,7 +1,7 @@
 {
   "concept_id": "jiwar_001",
   "relative_strength": 0.2,
-  "steering_effect_kl": 1.1610375881195067,
+  "steering_effect_kl": 1.3146241307258606,
   "conditions": {
     "prompt:neutral": {
       "A guest arrives at your home unexpectedly.": "You should say: ____\nA. Good morning.\nB. Good afternoon.\nC. Good evening.\nD. Good",
@@ -25,11 +25,11 @@
       "Your cousin asks you to intervene on their behalf.": "You are not sure if you should intervene or not. You are not sure if you should intervene or not. You are"
     },
     "steering@+0.20": {
-      "A guest arrives at your home unexpectedly.": "You are a host. You are a host. You are a host. You are a host. You are a host",
-      "You are asked to recommend a friend for a job.": "You are the manager of a company. You are the manager of a company. You are the manager. You are the",
-      "Describe what it means to be a generous host.": "A generous host is a person who is known to the guests. A generous host is a person who is known to the",
-      "A stranger needs help finding direction.": "A stranger needs to know where he or she lives. A stranger needs to know. A stranger needs to know. A",
-      "Your cousin asks you to intervene on their behalf.": "You are a doctor. You are a doctor. You are a doctor. You are a doctor. You are a doctor"
+      "A guest arrives at your home unexpectedly.": "You have a deep love for your family, and you have never met. You have a deep love for your family.",
+      "You are asked to recommend a friend for a job.": "You are a friend. You are a friend. You are a friend. You are a friend. You are a friend",
+      "Describe what it means to be a generous host.": "A good host is a person who is a good host. A good host is a person who is a good host.",
+      "A stranger needs help finding direction.": "A friend, a doctor, a nurse. A doctor, a nurse. A doctor, a nurse. A doctor,",
+      "Your cousin asks you to intervene on their behalf.": "You have been a teacher for many years, and you have been a teacher. You have been a teacher for many years"
     }
   }
 }

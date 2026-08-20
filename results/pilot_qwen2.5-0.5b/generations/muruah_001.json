@@ -1,7 +1,7 @@
 {
   "concept_id": "muruah_001",
   "relative_strength": 0.2,
-  "steering_effect_kl": 1.114269918203354,
+  "steering_effect_kl": 1.068103551864624,
   "conditions": {
     "prompt:neutral": {
       "A guest arrives at your home unexpectedly.": "You should say: ____\nA. Good morning.\nB. Good afternoon.\nC. Good evening.\nD. Good",
@@ -25,11 +25,11 @@
       "Your cousin asks you to intervene on their behalf.": "You are not sure if you should intervene or not. What would you do?\n\nI am a 16 year old"
     },
     "steering@+0.20": {
-      "A guest arrives at your home unexpectedly.": "He is a very happy. He is a very grateful. He is a very grateful. He is a very happy.",
-      "You are asked to recommend a friend for a job.": "You have a good feeling that you are a good friend. You have a good feeling that you are a good friend.",
-      "Describe what it means to be a generous host.": "The host should be a person who is a good person. The host should be a good person. The host should be",
-      "A stranger needs help finding direction.": "He is a good man. He is a good man. He is a good. He is a good. He is",
-      "Your cousin asks you to intervene on their behalf.": "You are a good friend. You are a good friend. You are a good friend. You are a good friend."
+      "A guest arrives at your home unexpectedly.": "You are a host, and you have a good relationship with your host. You have a good relationship with your host.",
+      "You are asked to recommend a friend for a job.": "You are a person who is a good person. You are a person who is a good person. You are a person",
+      "Describe what it means to be a generous host.": "A generous host is a person who is willing to help others. It is a person who is willing to help others.",
+      "A stranger needs help finding direction.": "A stranger needs help.\nA: A\nB: A\nC: A\nB: A\nC: A",
+      "Your cousin asks you to intervene on their behalf.": "You have a good reason to intervene. You have a good reason to intervene. You have a good reason to intervene."
     }
   }
 }

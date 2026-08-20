@@ -1,7 +1,7 @@
 {
   "concept_id": "karam_001",
   "relative_strength": 0.2,
-  "steering_effect_kl": 1.1804266273975372,
+  "steering_effect_kl": 1.1019582509994508,
   "conditions": {
     "prompt:neutral": {
       "A guest arrives at your home unexpectedly.": "You should say: ____\nA. Good morning.\nB. Good afternoon.\nC. Good evening.\nD. Good",
@@ -25,11 +25,11 @@
       "Your cousin asks you to intervene on their behalf.": "You are not sure if you should do so or not. You are not sure if you should do so or not."
     },
     "steering@+0.20": {
-      "A guest arrives at your home unexpectedly.": "He is very excited. He is a very happy. He is a very happy. He is a very happy. He",
-      "You are asked to recommend a friend for a job.": "You are a computer programmer. You have a lot of experience in the field of computer science. You have a lot of",
-      "Describe what it means to be a generous host.": "I am a host, I am a person who is a very much a person who is a very much a person.",
-      "A stranger needs help finding direction.": "He is a very old, and he is a very happy. He is a very old. He is a very happy",
-      "Your cousin asks you to intervene on their behalf.": "You are a good friend. You are a good friend. You are a good friend. You are a good friend."
+      "A guest arrives at your home unexpectedly.": "You are a host. You are a host. You are a host. You are a host. You are a host",
+      "You are asked to recommend a friend for a job.": "You are a person who is a good friend. You are a person who is a good friend. You are a person",
+      "Describe what it means to be a generous host.": "A generous host is a person who is willing to help others. A generous host is a person who is willing to help",
+      "A stranger needs help finding direction.": "A stranger needs help. A stranger needs help. A stranger needs help. A stranger needs help. A stranger needs help",
+      "Your cousin asks you to intervene on their behalf.": "You are the owner of a company, but you have a lot of experience in your own country. You have a lot"
     }
   }
 }

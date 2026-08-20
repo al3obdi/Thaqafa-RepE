@@ -155,6 +155,20 @@ class TestLayerSweep:
         assert all("probe_std" in row for row in rows)
         assert all("chance" in row for row in rows)
 
+    def test_the_seed_reaches_the_probes(self, engine: CulturalRepE) -> None:
+        """A --seed that controls only some phases makes the manifest a half-truth.
+
+        The estimates are seed-sensitive at this sample size, so a sweep left on
+        the library default while later phases used the run's seed produced two
+        different numbers for the same concept and layer.
+        """
+        first, _ = run_pilot.run_layer_sweep(engine, ["wasta_001"], 0, seed=1)
+        again, _ = run_pilot.run_layer_sweep(engine, ["wasta_001"], 0, seed=1)
+        other, _ = run_pilot.run_layer_sweep(engine, ["wasta_001"], 0, seed=99)
+
+        assert first == again
+        assert first != other
+
     def test_records_the_metric_and_the_class_balance(self, engine: CulturalRepE) -> None:
         """A stored score must say which rule produced it and how even the split was."""
         rows, _ = run_pilot.run_layer_sweep(engine, ["wasta_001"], 0)
@@ -240,6 +254,55 @@ class TestAlignmentPhase:
     def test_a_single_concept_produces_no_rows(self, engine: CulturalRepE) -> None:
         """With nothing to compare against, a separation would be meaningless."""
         assert run_pilot.run_alignment(engine, ["wasta_001"], {"wasta_001": 1}) == []
+
+
+class TestReadbackPhase:
+    """The causal check, and the layer ordering it depends on."""
+
+    @pytest.fixture
+    def extracted(self, engine: CulturalRepE) -> CulturalRepE:
+        """An engine with the concept already extracted, as the runner leaves it."""
+        engine.extract_vector("wasta_001", layer=0)
+        return engine
+
+    def test_reports_every_strength_rather_than_choosing_one(self, extracted: CulturalRepE) -> None:
+        """Picking the best strength would be selection on the same data."""
+        rows = run_pilot.run_readback(
+            extracted, ["wasta_001"], {"wasta_001": 2}, strengths=(0.1, 0.2), n_random=1
+        )
+        assert {float(row["strength"]) for row in rows} == {0.1, 0.2}
+
+    def test_carries_the_random_control(self, extracted: CulturalRepE) -> None:
+        """A rise in the positive rate means nothing without it."""
+        rows = run_pilot.run_readback(
+            extracted, ["wasta_001"], {"wasta_001": 2}, strengths=(0.2,), n_random=2
+        )
+        assert rows
+        assert all(row["n_random"] == 2 for row in rows)
+        assert all("lift_over_random" in row for row in rows)
+
+    def test_skips_a_concept_whose_best_layer_is_the_first_block(
+        self, extracted: CulturalRepE
+    ) -> None:
+        """There is nothing below layer 0 to inject into."""
+        rows = run_pilot.run_readback(
+            extracted, ["wasta_001"], {"wasta_001": 0}, strengths=(0.2,), n_random=1
+        )
+        assert rows == []
+
+    def test_reads_at_the_best_layer_not_the_last(self, extracted: CulturalRepE) -> None:
+        """A probe near chance at the last layer would make the lift meaningless."""
+        rows = run_pilot.run_readback(
+            extracted, ["wasta_001"], {"wasta_001": 2}, strengths=(0.2,), n_random=1
+        )
+        assert all(int(row["read_layer"]) == 2 for row in rows)
+        assert all(int(row["inject_layer"]) == 1 for row in rows)
+
+    def test_injects_below_the_layer_it_reads(self, extracted: CulturalRepE) -> None:
+        rows = run_pilot.run_readback(
+            extracted, ["wasta_001"], {"wasta_001": 0}, strengths=(0.2,), n_random=1
+        )
+        assert all(int(row["read_layer"]) > int(row["inject_layer"]) for row in rows)
 
 
 class TestWriteReport:
@@ -384,6 +447,7 @@ class TestMain:
                 "--no-baselines",
                 "--permutations",
                 "0",
+                "--no-readback",
             ]
         )
         out = tmp_path / "run"
@@ -410,6 +474,7 @@ class TestMain:
                 "--no-baselines",
                 "--permutations",
                 "0",
+                "--no-readback",
             ]
         )
         manifest = json.loads((tmp_path / "run" / "manifest.json").read_text())
@@ -431,6 +496,7 @@ class TestMain:
                 "--no-baselines",
                 "--permutations",
                 "0",
+                "--no-readback",
             ]
         )
         manifest = json.loads((tmp_path / "run" / "manifest.json").read_text())
@@ -450,6 +516,7 @@ class TestMain:
                     "--no-baselines",
                     "--permutations",
                     "0",
+                    "--no-readback",
                 ]
             )
 
@@ -468,6 +535,7 @@ class TestMain:
                 "--no-baselines",
                 "--permutations",
                 "0",
+                "--no-readback",
             ]
         )
         out = tmp_path / "run"
@@ -492,6 +560,7 @@ class TestMain:
                 str(tmp_path / "run"),
                 "--permutations",
                 "0",
+                "--no-readback",
             ]
         )
         out = tmp_path / "run"
@@ -515,6 +584,7 @@ class TestMain:
                 "--no-baselines",
                 "--permutations",
                 "0",
+                "--no-readback",
             ]
         )
         out = tmp_path / "run"
@@ -563,12 +633,45 @@ class TestMain:
                 "--no-baselines",
                 "--permutations",
                 "0",
+                "--no-readback",
             ]
         )
         rows = _read_csv(tmp_path / "run" / "layer_sweep.csv")
 
         assert all(row["p_value"] == "" for row in rows)
         assert "n/a" in (tmp_path / "run" / "README.md").read_text(encoding="utf-8")
+
+    def test_the_readback_reaches_the_artefacts(self, tmp_path: Path) -> None:
+        """The causal check is part of the run, and its control travels with it."""
+        run_pilot.main(
+            [
+                "--model",
+                "dummy/pilot",
+                "--concepts",
+                "wasta_001",
+                "--strengths",
+                "0.2",
+                "--output-dir",
+                str(tmp_path / "run"),
+                "--no-baselines",
+                "--permutations",
+                "0",
+            ]
+        )
+        out = tmp_path / "run"
+        readback_csv = out / "causal_readback.csv"
+        if not readback_csv.exists():
+            # The fake's best layer can land on block 0, where the check is
+            # correctly skipped. Nothing else to assert in that case.
+            return
+
+        rows = _read_csv(readback_csv)
+        assert all(int(row["read_layer"]) > int(row["inject_layer"]) for row in rows)
+        assert all(int(row["n_random"]) > 0 for row in rows)
+        text = (out / "README.md").read_text(encoding="utf-8")
+        assert "Does steering write what the probe reads" in text
+        assert "only column that carries information" in text
+        assert "discarded, not explained" in text
 
     def test_is_deterministic_for_a_fixed_seed(self, tmp_path: Path) -> None:
         """Two runs of the same command must produce the same numbers."""
@@ -584,6 +687,7 @@ class TestMain:
             "--no-baselines",
             "--permutations",
             "0",
+            "--no-readback",
         ]
         run_pilot.main([*argv, "--output-dir", str(tmp_path / "a")])
         run_pilot.main([*argv, "--output-dir", str(tmp_path / "b")])
@@ -631,6 +735,7 @@ class TestArtefactsSurviveTheCommitHooks:
                 str(tmp_path / "run"),
                 "--permutations",
                 "0",
+                "--no-readback",
             ]
         )
 

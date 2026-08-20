@@ -1,10 +1,10 @@
 {
   "schema_version": "1.0",
   "experiment": "pilot_gpt2",
-  "timestamp_utc": "2026-08-20T05:27:26+00:00",
+  "timestamp_utc": "2026-08-20T12:33:16+00:00",
   "git": {
-    "commit": "4784e46d48acec78732e143f734034ba50131cac",
-    "branch": "feat/balanced-probe-metric",
+    "commit": "796d792911da29ab152c932ec8299bb063595ae8",
+    "branch": "feat/causal-readback",
     "dirty": false,
     "untracked": 0
   },
@@ -55,6 +55,13 @@
     "max_new_tokens": 24,
     "probe_permutations": 200,
     "baselines_run": true,
+    "readback_run": true,
+    "readback_strengths": [
+      0.1,
+      0.2,
+      0.4
+    ],
+    "readback_random_controls": 3,
     "evaluation_prompts": [
       "A guest arrives at your home unexpectedly.",
       "You are asked to recommend a friend for a job.",

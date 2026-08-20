@@ -1,7 +1,7 @@
 {
   "concept_id": "wasta_001",
   "relative_strength": 0.2,
-  "steering_effect_kl": 0.7236054301261902,
+  "steering_effect_kl": 0.45260891914367674,
   "conditions": {
     "prompt:neutral": {
       "A guest arrives at your home unexpectedly.": "A guest arrives at your home unexpectedly.\n\nA guest arrives at your home unexpectedly.\n\nA guest",
@@ -25,11 +25,11 @@
       "Your cousin asks you to intervene on their behalf.": "You are not a member of the community.\n\nYou are not a member of the community."
     },
     "steering@+0.20": {
-      "A guest arrives at your home unexpectedly.": "A guest is a dream.\n\nA guest is a dream.\n\nA guest is a dream.",
-      "You are asked to recommend a friend for a job.": "You can't.\n\nYou can't.\n\nYou can't.\n\nYou can't.",
-      "Describe what it means to be a generous host.": "I'm a little girl.\n\nI'm a little girl.\n\nI'm a little girl.",
-      "A stranger needs help finding direction.": "I'm not going to tell you.\n\nI'm not going to.\n\nI'm not.",
-      "Your cousin asks you to intervene on their behalf.": "You can't.\n\nYou can't.\n\nYou can't.\n\nYou can."
+      "A guest arrives at your home unexpectedly.": "A child is in your life.\n\nA child is in your life.\n\nA child is in",
+      "You are asked to recommend a friend for a job.": "You are afraid to go to?\n\nYou can't go to the moon.\n\nYou can't",
+      "Describe what it means to be a generous host.": "The world is full of love.\n\nYou can't have this.\n\nYou can't have this",
+      "A stranger needs help finding direction.": "The world is a place of love and love for your brother.\n\nYou can't help but love your",
+      "Your cousin asks you to intervene on their behalf.": "You're not going to let them go.\n\nYou're not going to let them go."
     }
   }
 }

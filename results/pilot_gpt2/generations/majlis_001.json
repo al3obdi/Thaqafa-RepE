@@ -1,7 +1,7 @@
 {
   "concept_id": "majlis_001",
   "relative_strength": 0.2,
-  "steering_effect_kl": 0.37629812955856323,
+  "steering_effect_kl": 0.06303806323558092,
   "conditions": {
     "prompt:neutral": {
       "A guest arrives at your home unexpectedly.": "A guest arrives at your home unexpectedly.\n\nA guest arrives at your home unexpectedly.\n\nA guest",
@@ -25,11 +25,11 @@
       "Your cousin asks you to intervene on their behalf.": "You are not a member of the community.\n\nYou are not a member of the community."
     },
     "steering@+0.20": {
-      "A guest arrives at your home unexpectedly.": "The first time I saw was.\n\nThe first time I saw was.\n\nThe first time I",
-      "You are asked to recommend a friend for a job.": "The first time I saw was.\n\nThe first time I saw was.\n\nThe first time I",
-      "Describe what it means to be a generous host.": "The first time I had to be a generous host.\n\nThe first time I had to be a generous",
-      "A stranger needs help finding direction.": "The first time I saw was.\n\nThe first time I saw was.\n\nThe first time I",
-      "Your cousin asks you to intervene on their behalf.": "The first time I saw was.\n\nThe first time I saw was.\n\nThe first time I"
+      "A guest arrives at your home unexpectedly.": "A guest arrives at your home unexpectedly.\n\nA guest arrives at your home unexpectedly.\n\nA guest",
+      "You are asked to recommend a friend for a job.": "You are asked to recommend a friend for a job.\n\nYou are asked to recommend a friend for a",
+      "Describe what it means to be a generous host.": "I'm a generous host. I'm a generous host. I'm a generous host. I'm a generous",
+      "A stranger needs help finding direction.": "A stranger needs help finding direction.\n\nA stranger needs help finding direction.\n\nA stranger needs help",
+      "Your cousin asks you to intervene on their behalf.": "You're not sure what to do.\n\nYou're not sure what to do.\n\nYou're"
     }
   }
 }

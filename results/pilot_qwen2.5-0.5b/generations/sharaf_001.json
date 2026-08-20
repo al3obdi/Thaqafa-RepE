@@ -1,7 +1,7 @@
 {
   "concept_id": "sharaf_001",
   "relative_strength": 0.2,
-  "steering_effect_kl": 1.2416113376617433,
+  "steering_effect_kl": 2.7206098794937135,
   "conditions": {
     "prompt:neutral": {
       "A guest arrives at your home unexpectedly.": "You should say: ____\nA. Good morning.\nB. Good afternoon.\nC. Good evening.\nD. Good",
@@ -25,11 +25,11 @@
       "Your cousin asks you to intervene on their behalf.": "You are not sure if you should intervene or not. What would you do?\n\nI am a 17 year old"
     },
     "steering@+0.20": {
-      "A guest arrives at your home unexpectedly.": "You are a host, so you are not a host. You are a host. You are a host. You are",
-      "You are asked to recommend a friend for a job.": "You are a friend. You are a friend. You are a friend. You are a friend. You are a friend",
-      "Describe what it means to be a generous host.": "A generous host is a person who is generous in their own way. A generous person is a person who is generous.",
-      "A stranger needs help finding direction.": "A stranger needs you.\nA\nA\nB\nA\nB\nC\nA\nB\nC\nD",
-      "Your cousin asks you to intervene on their behalf.": "You are a person who has lived in the United States for a long time, and you have no knowledge of any other"
+      "A guest arrives at your home unexpectedly.": "A. A. A A A A A A A A A A A A A A A A A A A A",
+      "You are asked to recommend a friend for a job.": "A, B, C, D, E, F, G, A, A, A, A, A,",
+      "Describe what it means to be a generous host.": "A \nA. A \nA. A \nA. A \nA. A \nA. A \nA.",
+      "A stranger needs help finding direction.": "A. A. A. A. A A A A A A A A A A A A A A A A",
+      "Your cousin asks you to intervene on their behalf.": "A: A A A A A A A A A A A A A A A A A A A A A A"
     }
   }
 }

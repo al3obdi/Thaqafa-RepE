@@ -1,10 +1,10 @@
 {
   "schema_version": "1.0",
   "experiment": "pilot_qwen2.5-0.5b",
-  "timestamp_utc": "2026-08-20T05:57:09+00:00",
+  "timestamp_utc": "2026-08-20T13:12:38+00:00",
   "git": {
-    "commit": "f5bc90a2a52166259bbc1c9fb122d847787815cc",
-    "branch": "feat/balanced-probe-metric",
+    "commit": "d13b40b886680da7a2ce372e2139d8c91c7842db",
+    "branch": "feat/causal-readback",
     "dirty": false,
     "untracked": 0
   },
@@ -55,6 +55,13 @@
     "max_new_tokens": 24,
     "probe_permutations": 200,
     "baselines_run": true,
+    "readback_run": true,
+    "readback_strengths": [
+      0.1,
+      0.2,
+      0.4
+    ],
+    "readback_random_controls": 3,
     "evaluation_prompts": [
       "A guest arrives at your home unexpectedly.",
       "You are asked to recommend a friend for a job.",
