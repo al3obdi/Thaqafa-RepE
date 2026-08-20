@@ -337,10 +337,14 @@ Two complete pilot runs are committed under [`results/`](results/), each with a
 package versions. Every number the paper quotes comes from an artefact of this
 kind — nothing in this repository reports a measurement it did not make.
 
-| Run | Concepts readable above chance (p < 0.05) | Mean balanced accuracy |
-| --- | --- | --- |
-| [`gpt2`](results/pilot_gpt2/) (124M, negligible Arabic) | 6 / 12 | 0.743 |
-| [`Qwen2.5-0.5B`](results/pilot_qwen2.5-0.5b/) (multilingual) | 11 / 12 | 0.951 |
+| Run | Readable above chance (p < 0.05) | Mean balanced accuracy | Steering beats a random direction |
+| --- | --- | --- | --- |
+| [`gpt2`](results/pilot_gpt2/) (124M, negligible Arabic) | 6 / 12 | 0.743 | 12 / 12 |
+| [`Qwen2.5-0.5B`](results/pilot_qwen2.5-0.5b/) (multilingual) | 11 / 12 | 0.951 | 33 / 33 |
+
+The last column counts only the read-back points measured through a probe that
+can actually read its concept (balanced accuracy ≥ 0.70); the rest are reported
+in the CSV but should be discarded, and each run's report says so.
 
 ```bash
 # Reproduce either (CPU, no token required)
