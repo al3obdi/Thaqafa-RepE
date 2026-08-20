@@ -155,6 +155,20 @@ class TestLayerSweep:
         assert all("probe_std" in row for row in rows)
         assert all("chance" in row for row in rows)
 
+    def test_the_seed_reaches_the_probes(self, engine: CulturalRepE) -> None:
+        """A --seed that controls only some phases makes the manifest a half-truth.
+
+        The estimates are seed-sensitive at this sample size, so a sweep left on
+        the library default while later phases used the run's seed produced two
+        different numbers for the same concept and layer.
+        """
+        first, _ = run_pilot.run_layer_sweep(engine, ["wasta_001"], 0, seed=1)
+        again, _ = run_pilot.run_layer_sweep(engine, ["wasta_001"], 0, seed=1)
+        other, _ = run_pilot.run_layer_sweep(engine, ["wasta_001"], 0, seed=99)
+
+        assert first == again
+        assert first != other
+
     def test_records_the_metric_and_the_class_balance(self, engine: CulturalRepE) -> None:
         """A stored score must say which rule produced it and how even the split was."""
         rows, _ = run_pilot.run_layer_sweep(engine, ["wasta_001"], 0)

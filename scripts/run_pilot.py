@@ -141,6 +141,7 @@ def run_layer_sweep(
     engine: CulturalRepE,
     concept_ids: list[str],
     n_permutations: int = DEFAULT_N_PERMUTATIONS,
+    seed: int = DEFAULT_SEED,
 ) -> tuple[list[dict[str, Any]], dict[str, int]]:
     """Probe every layer for every concept.
 
@@ -150,6 +151,11 @@ def run_layer_sweep(
         n_permutations: Label shufflings behind each p-value. Zero skips the
             permutation test, which is much faster but leaves a high score on a
             small sample with nothing to be read against.
+        seed: Seed for the probes and their folds. Passed explicitly rather
+            than left to the library default, so that one ``--seed`` controls
+            every phase of a run instead of some of them. The estimates are
+            sensitive to it at this sample size: two seeds have differed by
+            0.25 balanced accuracy on the same concept and layer.
 
     Returns:
         A ``(rows, best_layers)`` pair, where rows are ready for CSV and
@@ -159,7 +165,9 @@ def run_layer_sweep(
     best_layers: dict[str, int] = {}
     for concept_id in concept_ids:
         logger.info("probing layers for %s", concept_id)
-        results = sweep_layers_with_probe(engine, concept_id, n_permutations=n_permutations)
+        results = sweep_layers_with_probe(
+            engine, concept_id, n_permutations=n_permutations, seed=seed
+        )
         for result in results.values():
             rows.append(
                 {
@@ -619,7 +627,10 @@ def write_report(
             "## Limitations",
             "",
             "- Small exemplar sets mean wide confidence intervals; no claim here",
-            "  is statistically established.",
+            "  is statistically established. Concretely: two random seeds have",
+            "  produced balanced accuracies 0.25 apart for the same concept at",
+            "  the same layer. The seed is in `manifest.json`, and a rerun under",
+            "  a different one will not reproduce these numbers exactly.",
             "- The reported layer was selected on the same data as the p-value",
             "  beside it, and nothing corrects for having probed every layer of",
             "  every concept. A confirmatory result would need the layer fixed",
@@ -767,7 +778,9 @@ def main(argv: list[str] | None = None) -> int:
     logger.info("loading %s on %s", args.model, args.device)
     engine.load_model()
 
-    layer_rows, best_layers = run_layer_sweep(engine, concept_ids, args.permutations)
+    layer_rows, best_layers = run_layer_sweep(
+        engine, concept_ids, args.permutations, seed=args.seed
+    )
     _write_csv(
         output_dir / "layer_sweep.csv",
         [
