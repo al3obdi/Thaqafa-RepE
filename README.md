@@ -337,10 +337,21 @@ Two complete pilot runs are committed under [`results/`](results/), each with a
 package versions. Every number the paper quotes comes from an artefact of this
 kind — nothing in this repository reports a measurement it did not make.
 
-| Run | Readable above chance (p < 0.05) | Mean balanced accuracy | Steering beats a random direction |
-| --- | --- | --- | --- |
-| [`gpt2`](results/pilot_gpt2/) (124M, negligible Arabic) | 6 / 12 | 0.743 | 12 / 12 |
-| [`Qwen2.5-0.5B`](results/pilot_qwen2.5-0.5b/) (multilingual) | 11 / 12 | 0.951 | 33 / 33 |
+| Run | Readable above chance (p < 0.05) | Mean balanced accuracy | Adding beats random | Subtracting beats random |
+| --- | --- | --- | --- | --- |
+| [`gpt2`](results/pilot_gpt2/) (124M, negligible Arabic) | 5 / 12 | 0.681 | 16 / 16 | 16 / 16 |
+| [`Qwen2.5-0.5B`](results/pilot_qwen2.5-0.5b/) (multilingual) | 11 / 12 | 0.883 | 42 / 44 | 36 / 44 |
+
+The causal columns count only the points measured through a reading probe at
+0.70 balanced accuracy or better — a lift through a probe near chance says
+nothing. `gpt2` can only supply sixteen such points; Qwen supplies
+forty-four. The eight subtractions that *fail* in Qwen are left in the table
+rather than filtered out: subtraction is not uniformly reversible even where
+addition works, and that asymmetry is what the check exists to surface.
+
+Every figure above is asserted against the committed CSVs by
+`tests/test_readme_numbers.py`, so the table cannot drift from the artefacts
+it summarises.
 
 The last column counts only the read-back points measured through a probe that
 can actually read its concept (balanced accuracy ≥ 0.70); the rest are reported
