@@ -343,15 +343,24 @@ def run_readback(
 ) -> list[dict[str, Any]]:
     """Ask whether steering writes the concept each probe reads.
 
-    The probe reads from a layer below the last block, and injection happens at
-    the concept's own best layer. Concepts whose best layer leaves no room to
-    read deeper are skipped rather than measured at the injection layer, which
-    would only confirm that addition works.
+    The probe reads at the concept's **best** layer - the one where the sweep
+    showed it is actually readable - and injection happens one block below.
+    Reading at a layer where the probe scores near chance would measure nothing
+    but the position of an arbitrary hyperplane, which is why the last block is
+    the wrong place to read even though it leaves the most room to inject.
+
+    A concept whose best layer is the first block is skipped: there is nothing
+    below it to inject into, and reading at the injection layer would only
+    confirm that addition works.
+
+    One block of separation is a modest test. It shows the written direction
+    surviving into the basis the probe reads in, not that it survives the whole
+    stack, and the report says so.
 
     Args:
-        engine: Engine with a loaded model and the concept vectors extracted.
+        engine: Engine with a loaded model.
         concept_ids: Concepts to check.
-        best_layers: Per-concept injection layer.
+        best_layers: Per-concept best probe layer, used as the read layer.
         strengths: Norm-relative coefficients, all reported.
         n_random: Matched-norm control directions per point.
         seed: Seed for the probes and the control directions.
@@ -359,17 +368,16 @@ def run_readback(
     Returns:
         Rows ready for CSV, one per concept and strength.
     """
-    n_layers = int(engine.model.cfg.n_layers)  # type: ignore[union-attr]
     rows: list[dict[str, Any]] = []
 
     for concept_id in concept_ids:
-        inject_layer = best_layers[concept_id]
-        read_layer = n_layers - 1
-        if read_layer <= inject_layer:
+        read_layer = best_layers[concept_id]
+        inject_layer = read_layer - 1
+        if inject_layer < 0:
             logger.warning(
-                "skipping read-back for %s: best layer %d leaves no deeper layer to read",
+                "skipping read-back for %s: its best layer is 0, so there is no "
+                "layer below it to inject into",
                 concept_id,
-                inject_layer,
             )
             continue
 
@@ -566,11 +574,18 @@ def write_report(
                 "",
                 "## 5. Does steering write what the probe reads?",
                 "",
-                "The direction is injected below a probe's layer and the probe",
+                "The direction is injected one block below the layer where the",
+                "sweep found the concept most readable, and that layer's probe",
                 "is then run on neutral prompts - the same prompts the concept",
                 "was contrasted against. `steered` is the share it calls",
                 "positive; `random` is the same share under matched-norm random",
                 "directions injected at the same layer.",
+                "",
+                "`Probe` is the reading probe's own cross-validated balanced",
+                "accuracy. **A lift measured through a probe near 0.5 should be",
+                "discarded, not explained**: a probe at chance still has a",
+                "decision boundary, and pushing activations across an arbitrary",
+                "hyperplane produces a lift that means nothing.",
                 "",
                 "**`lift` is the only column that carries information.** KL",
                 "divergence and fluency loss are magnitudes that any large",
@@ -583,14 +598,15 @@ def write_report(
                 "the lift shrinking back toward zero. Every strength is",
                 "reported rather than one being chosen.",
                 "",
-                "| Concept | Inject | Read | Strength | Base | Steered | Random | Lift |",
-                "|---|---|---|---|---|---|---|---|",
+                "| Concept | Inject | Read | Probe | Strength | Base | Steered | Random | Lift |",
+                "|---|---|---|---|---|---|---|---|---|",
             ]
         )
         for row in readback_rows:
             lines.append(
                 f"| `{row['concept_id']}` | {row['inject_layer']} | "
-                f"{row['read_layer']} | {float(row['strength']):.2f} | "
+                f"{row['read_layer']} | {float(row['probe_accuracy']):.2f} | "
+                f"{float(row['strength']):.2f} | "
                 f"{float(row['baseline_rate']):.2f} | "
                 f"{float(row['steered_rate']):.2f} | "
                 f"{float(row['mean_random_rate']):.2f} | "
@@ -612,9 +628,11 @@ def write_report(
             "  the activations. It does not say the probe found the concept",
             "  rather than a word the exemplars happen to share.",
             "- The read-back shows a written direction reaching the probe that",
-            "  reads it. Both sides come from the same twelve exemplars, so it",
-            "  is a consistency check on the method, not evidence that the",
-            "  direction is the cultural concept a person would name.",
+            "  reads it, across one transformer block. Both sides come from the",
+            "  same twelve exemplars, so it is a consistency check on the",
+            "  method, not evidence that the direction is the cultural concept",
+            "  a person would name, and not evidence that it survives the whole",
+            "  stack.",
             "- Most of the concept entries are still awaiting native-speaker",
             "  review (`review_status` in the dataset).",
             "- A model with little Arabic capability can only validate that the",

@@ -261,9 +261,19 @@ class TestReadback:
         with pytest.raises(ValueError, match="deeper than inject_layer"):
             readback(make_engine(), "diyafa_001", 4, 2)
 
-    def test_an_unextracted_concept_is_rejected(self) -> None:
-        with pytest.raises(KeyError, match="No vector stored"):
-            readback(make_engine(), "karam_001", 1, 4)
+    def test_needs_no_prior_extraction(self) -> None:
+        """The direction is found at the injection layer, so nothing is cached."""
+        engine = make_engine()
+        engine.concept_vectors.clear()
+        engine.extraction_layers.clear()
+
+        result = readback(engine, "diyafa_001", 1, 4, strength=2.0, n_random=1)
+
+        assert result.n_prompts > 0
+
+    def test_an_unknown_concept_is_rejected(self) -> None:
+        with pytest.raises(ValueError, match="was not found"):
+            readback(make_engine(), "not_a_concept_999", 1, 4)
 
     def test_empty_prompts_are_rejected(self) -> None:
         with pytest.raises(ValueError, match="at least one prompt"):

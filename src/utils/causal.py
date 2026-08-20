@@ -17,9 +17,23 @@ The random arm is the point. Reporting only that the steered rate rose would
 leave open that any perturbation large enough moves a probe trained on twenty
 prompts, which on twenty prompts is entirely plausible.
 
+Two constraints keep the measurement honest.
+
 The injection layer must sit strictly below the read layer. Injecting and
 reading at the same layer measures that addition works, since the probe would
 be looking directly at the vector that was just added.
+
+The read layer should be one where the probe can actually read the concept.
+A probe scoring at chance still has a decision boundary, and pushing
+activations across an arbitrary hyperplane produces a lift that means nothing.
+The probe's own cross-validated accuracy therefore travels with every result,
+and a lift measured through a weak probe should be discarded rather than
+explained.
+
+The injected direction is extracted at the injection layer, not carried down
+from wherever the concept vector was cached. Residual bases differ between
+layers, so a direction found at one layer is not the concept's direction at
+another, and injecting it there would be measuring an arbitrary vector.
 """
 
 from __future__ import annotations
@@ -167,7 +181,9 @@ def readback(
     """Inject a concept into neutral prompts and see whether its probe notices.
 
     Args:
-        engine: Engine with a loaded model and ``concept`` already extracted.
+        engine: Engine with a loaded model. The injected direction is derived
+            here from the concept's exemplars, so nothing needs extracting
+            first.
         inject_layer: Layer to add the direction to.
         read_layer: Layer to probe, strictly deeper than ``inject_layer``.
         concept: Concept identifier.
@@ -186,8 +202,8 @@ def readback(
         The rates, with the control alongside.
 
     Raises:
-        ValueError: If the layers are not ordered, the concept has no vector,
-            or the prompt set is empty.
+        ValueError: If the layers are not ordered, the concept cannot be
+            resolved from the dataset, or the prompt set is empty.
         RuntimeError: If the model has not been loaded.
     """
     if read_layer <= inject_layer:
@@ -196,9 +212,6 @@ def readback(
             f"read={read_layer} inject={inject_layer}. Reading at the injection "
             "layer would only confirm that addition works."
         )
-    if concept not in engine.concept_vectors:
-        raise KeyError(f"No vector stored for concept {concept!r}. Call extract_vector() first.")
-
     engine._require_model()
     positives, curated = engine._resolve_examples(concept, None)
     negatives = build_contrast_examples(positives, curated)
@@ -223,32 +236,37 @@ def readback(
 
     baseline_rate = _positive_rate(probe, engine.collect_activations(prompts, read_layer))
 
-    with engine.steering(
-        concept, strength=strength, layers=[inject_layer], strength_mode=strength_mode
-    ):
-        steered_rate = _positive_rate(probe, engine.collect_activations(prompts, read_layer))
+    # The direction is found at the layer it will be added to. A direction
+    # extracted elsewhere is not this layer's concept direction.
+    concept_direction = engine.contrast_direction(
+        positives, negatives, layer=inject_layer, label=f"{concept}@L{inject_layer}"
+    )
+
+    def rate_under(direction: torch.Tensor) -> float:
+        """Positive rate with *direction* injected, then cleanly removed."""
+        engine.concept_vectors[_CONTROL_KEY] = direction
+        engine.extraction_layers[_CONTROL_KEY] = inject_layer
+        try:
+            with engine.steering(
+                _CONTROL_KEY,
+                strength=strength,
+                layers=[inject_layer],
+                strength_mode=strength_mode,
+            ):
+                return _positive_rate(probe, engine.collect_activations(prompts, read_layer))
+        finally:
+            engine.concept_vectors.pop(_CONTROL_KEY, None)
+            engine.extraction_layers.pop(_CONTROL_KEY, None)
+
+    # Both arms go through one code path, so they cannot differ by anything
+    # except the direction that was injected.
+    steered_rate = rate_under(concept_direction)
 
     random_rates: list[float] = []
     if n_random > 0:
         d_model = int(engine.model.cfg.d_model)  # type: ignore[union-attr]
         for index, direction in enumerate(random_directions(d_model, n_random, seed)):
-            # Route the control through the same injection path as the concept,
-            # so the two arms cannot differ by anything except the direction.
-            engine.concept_vectors[_CONTROL_KEY] = direction
-            engine.extraction_layers[_CONTROL_KEY] = inject_layer
-            try:
-                with engine.steering(
-                    _CONTROL_KEY,
-                    strength=strength,
-                    layers=[inject_layer],
-                    strength_mode=strength_mode,
-                ):
-                    random_rates.append(
-                        _positive_rate(probe, engine.collect_activations(prompts, read_layer))
-                    )
-            finally:
-                engine.concept_vectors.pop(_CONTROL_KEY, None)
-                engine.extraction_layers.pop(_CONTROL_KEY, None)
+            random_rates.append(rate_under(direction))
             logger.debug("control %d/%d: rate %.3f", index + 1, n_random, random_rates[-1])
 
     result = ReadbackResult(
