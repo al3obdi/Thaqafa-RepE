@@ -324,6 +324,16 @@ class TestWriteReport:
         assert "Limitations" in text
         assert "native-speaker" in text
 
+    def test_says_the_layer_was_chosen_on_the_same_data(self, tmp_path: Path) -> None:
+        """Best-of-twelve selection makes an uncorrected p-value optimistic."""
+        layer_rows, best, steering_rows = self._rows()
+        path = run_pilot.write_report(
+            tmp_path, self._manifest(), layer_rows, best, steering_rows, []
+        )
+        text = path.read_text(encoding="utf-8")
+        assert "chosen by the same data" in text
+        assert "correction" in text
+
     def test_flags_a_dirty_working_tree(self, tmp_path: Path) -> None:
         """Results from uncommitted code must say so on their face."""
         manifest = self._manifest()
