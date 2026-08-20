@@ -40,7 +40,12 @@ if str(PROJECT_ROOT) not in sys.path:
 from src.data.dataset_builder import load_concepts  # noqa: E402
 from src.models.rep_engine import EVALUATION_PROMPTS, CulturalRepE  # noqa: E402
 from src.utils.baselines import compare_steering_vs_prompting  # noqa: E402
-from src.utils.causal import readback, summarize_readback  # noqa: E402
+from src.utils.causal import (  # noqa: E402
+    readback,
+    summarize_readback,
+    summarize_suppression,
+    suppression,
+)
 from src.utils.crosslingual import alignment, summarize_alignment  # noqa: E402
 from src.utils.evaluation import evaluate_steering  # noqa: E402
 from src.utils.probes import (  # noqa: E402
@@ -75,6 +80,9 @@ control and where both have saturated.
 """
 
 DEFAULT_N_RANDOM_CONTROLS = 3
+
+DEFAULT_SUPPRESSION_STRENGTHS: tuple[float, ...] = (-0.2, -0.4)
+"""Negative coefficients for the suppression check, reported in full."""
 
 
 def load_concept_names(dataset_path: Path | str) -> dict[str, str]:
@@ -407,6 +415,58 @@ def run_readback(
     return rows
 
 
+def run_suppression(
+    engine: CulturalRepE,
+    concept_ids: list[str],
+    best_layers: dict[str, int],
+    strengths: tuple[float, ...] = DEFAULT_SUPPRESSION_STRENGTHS,
+    n_random: int = DEFAULT_N_RANDOM_CONTROLS,
+    seed: int = DEFAULT_SEED,
+) -> list[dict[str, Any]]:
+    """Ask whether subtracting a concept removes it from its own exemplars.
+
+    Uses the same layer pair as the read-back - read where the concept is most
+    readable, subtract one block below - so amplification and suppression are
+    measured on the same footing and their asymmetry, if any, is not an
+    artefact of where each was measured.
+
+    Args:
+        engine: Engine with a loaded model.
+        concept_ids: Concepts to check.
+        best_layers: Per-concept best probe layer, used as the read layer.
+        strengths: Negative coefficients, all reported.
+        n_random: Matched-norm control directions per point.
+        seed: Seed for the probes, the folds and the controls.
+
+    Returns:
+        Rows ready for CSV, one per concept and strength.
+    """
+    rows: list[dict[str, Any]] = []
+
+    for concept_id in concept_ids:
+        read_layer = best_layers[concept_id]
+        inject_layer = read_layer - 1
+        if inject_layer < 0:
+            logger.warning("skipping suppression for %s: its best layer is 0", concept_id)
+            continue
+
+        results = {}
+        for strength in strengths:
+            results[f"{concept_id}@{strength}"] = suppression(
+                engine,
+                concept_id,
+                inject_layer=inject_layer,
+                read_layer=read_layer,
+                strength=strength,
+                strength_mode="relative",
+                n_random=n_random,
+                seed=seed,
+            )
+        rows.extend(dict(row) for row in summarize_suppression(results))
+
+    return rows
+
+
 def write_report(
     output_dir: Path,
     manifest: dict[str, Any],
@@ -417,6 +477,7 @@ def write_report(
     alignment_rows: list[dict[str, Any]] | None = None,
     permutations: int = DEFAULT_N_PERMUTATIONS,
     readback_rows: list[dict[str, Any]] | None = None,
+    suppression_rows: list[dict[str, Any]] | None = None,
 ) -> Path:
     """Write the human-readable summary of a pilot run.
 
@@ -437,6 +498,7 @@ def write_report(
             so a reader can see the resolution the p-values were measured at.
         readback_rows: Causal read-back rows. Omit or pass an empty list when
             the check did not run.
+        suppression_rows: Suppression rows, same convention.
 
     Returns:
         The path written.
@@ -621,6 +683,48 @@ def write_report(
                 f"{float(row['lift_over_random']):+.2f} |"
             )
 
+    if suppression_rows:
+        lines.extend(
+            [
+                "",
+                "## 6. Does subtracting the concept remove it?",
+                "",
+                "The mirror of the section above, and the claim representation",
+                "engineering is most often reached for and least often checked.",
+                "The direction is *subtracted* at the same layer, and the probe",
+                "is run on the concept's own exemplars - held out fold by fold,",
+                "because a probe trained on an exemplar recognises it whatever",
+                "is injected.",
+                "",
+                "`base` is how often the probes recognise exemplars they never",
+                "saw; it caps how far suppression could possibly push. `Probe`",
+                "is those probes' held-out balanced accuracy, which has to be",
+                'read first: a probe answering "positive" to everything would',
+                "reach a baseline of 1.00 too, and anything that unsettled it",
+                "would look like removal.",
+                "",
+                "**`drop` is the column that carries information.** Subtracting",
+                "a large enough vector damages the representation whatever its",
+                "direction, and a probe stops recognising damaged activations;",
+                "only the part a random direction of the same norm fails to",
+                "reproduce is evidence about the concept.",
+                "",
+                "| Concept | Inject | Read | Probe | Strength | Base | Steered | Random | Drop |",
+                "|---|---|---|---|---|---|---|---|---|",
+            ]
+        )
+        for row in suppression_rows:
+            lines.append(
+                f"| `{row['concept_id']}` | {row['inject_layer']} | "
+                f"{row['read_layer']} | "
+                f"{float(row['probe_balanced_accuracy']):.2f} | "
+                f"{float(row['strength']):+.2f} | "
+                f"{float(row['baseline_rate']):.2f} | "
+                f"{float(row['steered_rate']):.2f} | "
+                f"{float(row['mean_random_rate']):.2f} | "
+                f"{float(row['drop_beyond_random']):+.2f} |"
+            )
+
     lines.extend(
         [
             "",
@@ -706,7 +810,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument(
         "--no-readback",
         action="store_true",
-        help="Skip the causal read-back check.",
+        help="Skip the causal read-back and suppression checks.",
     )
     parser.add_argument(
         "--permutations",
@@ -767,6 +871,7 @@ def main(argv: list[str] | None = None) -> int:
             "baselines_run": not args.no_baselines,
             "readback_run": not args.no_readback,
             "readback_strengths": list(DEFAULT_READBACK_STRENGTHS),
+            "suppression_strengths": list(DEFAULT_SUPPRESSION_STRENGTHS),
             "readback_random_controls": DEFAULT_N_RANDOM_CONTROLS,
             "evaluation_prompts": list(EVALUATION_PROMPTS),
         },
@@ -872,6 +977,30 @@ def main(argv: list[str] | None = None) -> int:
             readback_rows,
         )
 
+    suppression_rows: list[dict[str, Any]] = []
+    if not args.no_readback:
+        suppression_rows = run_suppression(engine, concept_ids, best_layers, seed=args.seed)
+        if suppression_rows:
+            _write_csv(
+                output_dir / "suppression.csv",
+                [
+                    "concept_id",
+                    "inject_layer",
+                    "read_layer",
+                    "strength",
+                    "strength_mode",
+                    "baseline_rate",
+                    "steered_rate",
+                    "mean_random_rate",
+                    "drop_beyond_random",
+                    "n_random",
+                    "probe_balanced_accuracy",
+                    "n_exemplars",
+                    "n_folds",
+                ],
+                suppression_rows,
+            )
+
     write_report(
         output_dir,
         manifest,
@@ -882,6 +1011,7 @@ def main(argv: list[str] | None = None) -> int:
         alignment_rows,
         args.permutations,
         readback_rows,
+        suppression_rows,
     )
     logger.info("pilot complete: %s", output_dir)
     return 0

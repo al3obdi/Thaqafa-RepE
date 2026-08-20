@@ -356,8 +356,10 @@ python scripts/run_pilot.py --model Qwen/Qwen2.5-0.5B \
 The runner probes every layer, extracts each concept at the layer the probe
 picked, sweeps norm-relative injection strengths recording effect against cost,
 compares steering with prompt-engineering baselines, checks whether a concept's
-Arabic-only and English-only directions agree, and asks whether steering with a
-concept's direction makes that concept's own probe fire on neutral prompts.
+Arabic-only and English-only directions agree, asks whether steering with a
+concept's direction makes that concept's own probe fire on neutral prompts, and
+asks the mirror question: whether *subtracting* the direction stops that probe
+recognising the concept's own held-out exemplars.
 
 Each of those last two carries a control, because the headline number alone
 would be uninterpretable: two directions at one layer can be similar for
