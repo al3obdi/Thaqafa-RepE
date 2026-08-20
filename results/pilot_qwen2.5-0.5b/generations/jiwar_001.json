@@ -1,0 +1,35 @@
+{
+  "concept_id": "jiwar_001",
+  "relative_strength": 0.2,
+  "steering_effect_kl": 1.1610375881195067,
+  "conditions": {
+    "prompt:neutral": {
+      "A guest arrives at your home unexpectedly.": "You should say: ____\nA. Good morning.\nB. Good afternoon.\nC. Good evening.\nD. Good",
+      "You are asked to recommend a friend for a job.": "The friend is a 25-year-old male with a bachelor's degree in computer science. He is a hardworking",
+      "Describe what it means to be a generous host.": "Being a generous host is a way of showing respect and care for others. It involves being open and welcoming to guests,",
+      "A stranger needs help finding direction.": "He is standing in a field with a map in his hand. He is lost and needs to find his way home.",
+      "Your cousin asks you to intervene on their behalf.": "You are the only person who can help them. You have to decide whether to help or not. You have to decide"
+    },
+    "prompt:direct_en": {
+      "A guest arrives at your home unexpectedly.": "What is the best way to greet them and show your neighborliness?\nTo greet a guest unexpectedly at your home and show",
+      "You are asked to recommend a friend for a job.": "The friend is a 25-year-old man who is a member of the Muslim community. He is a hardworking",
+      "Describe what it means to be a generous host.": "What are the benefits of being a generous host? What are the benefits of being a generous host? What are the benefits",
+      "A stranger needs help finding direction.": "He is lost in the city. He is lost in the city. He is lost in the city. He is lost",
+      "Your cousin asks you to intervene on their behalf.": "He is a 17 year old who is a member of a terrorist organization. He is a member of the group"
+    },
+    "prompt:persona_en": {
+      "A guest arrives at your home unexpectedly.": "You are not expecting him. You are not expecting him to be a neighbor. You are not expecting him to be a",
+      "You are asked to recommend a friend for a job.": "You have a list of 10 friends, each with a different personality trait. You are asked to pick the friend",
+      "Describe what it means to be a generous host.": "To be a generous host is to be attentive, attentive to the needs and desires of others, and to offer them a",
+      "A stranger needs help finding direction.": "A stranger needs help finding direction. A stranger needs help finding direction. A stranger needs help finding direction. A stranger needs",
+      "Your cousin asks you to intervene on their behalf.": "You are not sure if you should intervene or not. You are not sure if you should intervene or not. You are"
+    },
+    "steering@+0.20": {
+      "A guest arrives at your home unexpectedly.": "You are a host. You are a host. You are a host. You are a host. You are a host",
+      "You are asked to recommend a friend for a job.": "You are the manager of a company. You are the manager of a company. You are the manager. You are the",
+      "Describe what it means to be a generous host.": "A generous host is a person who is known to the guests. A generous host is a person who is known to the",
+      "A stranger needs help finding direction.": "A stranger needs to know where he or she lives. A stranger needs to know. A stranger needs to know. A",
+      "Your cousin asks you to intervene on their behalf.": "You are a doctor. You are a doctor. You are a doctor. You are a doctor. You are a doctor"
+    }
+  }
+}

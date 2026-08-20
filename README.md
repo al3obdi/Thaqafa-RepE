@@ -332,15 +332,21 @@ alone cannot tell the two apart.
 
 ## Pilot results
 
-A complete pilot run against `gpt2` is committed under
-[`results/pilot_gpt2/`](results/pilot_gpt2/), alongside a `manifest.json` that
-pins the commit, the seed, the dataset hash and the installed package versions.
-Every number the paper quotes comes from an artefact of this kind — nothing in
-this repository reports a measurement it did not make.
+Two complete pilot runs are committed under [`results/`](results/), each with a
+`manifest.json` pinning the commit, the seed, the dataset hash and the installed
+package versions. Every number the paper quotes comes from an artefact of this
+kind — nothing in this repository reports a measurement it did not make.
+
+| Run | Concepts readable above chance (p < 0.05) | Mean balanced accuracy |
+| --- | --- | --- |
+| [`gpt2`](results/pilot_gpt2/) (124M, negligible Arabic) | 6 / 12 | 0.743 |
+| [`Qwen2.5-0.5B`](results/pilot_qwen2.5-0.5b/) (multilingual) | 11 / 12 | 0.951 |
 
 ```bash
-# Reproduce it (CPU, no token required)
+# Reproduce either (CPU, no token required)
 python scripts/run_pilot.py --model gpt2 --output-dir results/pilot_gpt2 --seed 42
+python scripts/run_pilot.py --model Qwen/Qwen2.5-0.5B \
+  --output-dir results/pilot_qwen2.5-0.5b --seed 42
 ```
 
 The runner probes every layer, extracts each concept at the layer the probe
@@ -350,10 +356,14 @@ concept's Arabic-only and English-only directions agree — against a mismatched
 control, because two directions at one layer can be similar for reasons that
 have nothing to do with the concept.
 
-`gpt2` has almost no Arabic capability, so the pilot establishes that the
-pipeline measures what it claims to; it is not evidence about Arab cultural
-concepts. Read [`results/pilot_gpt2/README.md`](results/pilot_gpt2/README.md)
-for the numbers and the limitations that travel with them.
+The gap between the two runs is the headline: `gpt2` has almost no Arabic
+capability, and it is the concepts' readability that collapses with it, not the
+pipeline. `wasta_001` sits at chance in `gpt2` (0.500, p = 0.54) and reaches
+0.817 (p = 0.04) in Qwen. Neither run is evidence about Arab cultural concepts
+in a deployed model: the exemplar sets are small, the reported layer was chosen
+on the same data as its p-value, and most dataset entries still await
+native-speaker review. Each run's `README.md` carries those limitations next to
+its own numbers.
 
 ## Project Structure
 

@@ -1,0 +1,35 @@
+{
+  "concept_id": "silat_rahim_001",
+  "relative_strength": 0.2,
+  "steering_effect_kl": 0.8660402357578277,
+  "conditions": {
+    "prompt:neutral": {
+      "A guest arrives at your home unexpectedly.": "You should say: ____\nA. Good morning.\nB. Good afternoon.\nC. Good evening.\nD. Good",
+      "You are asked to recommend a friend for a job.": "The friend is a 25-year-old male with a bachelor's degree in computer science. He is a hardworking",
+      "Describe what it means to be a generous host.": "Being a generous host is a way of showing respect and care for others. It involves being open and welcoming to guests,",
+      "A stranger needs help finding direction.": "He is standing in a field with a map in his hand. He is lost and needs to find his way home.",
+      "Your cousin asks you to intervene on their behalf.": "You are the only person who can help them. You have to decide whether to help or not. You have to decide"
+    },
+    "prompt:direct_en": {
+      "A guest arrives at your home unexpectedly.": "You are the host and you want to invite him/her to your home. You have a lot of Silat al-R",
+      "You are asked to recommend a friend for a job.": "You have a list of 10 friends, each with their own unique qualities and strengths. You must choose the friend",
+      "Describe what it means to be a generous host.": "What are the benefits of being a generous host? What are the benefits of being a generous host? What are the benefits",
+      "A stranger needs help finding direction.": "He needs to know where to go. He needs to know where to go. He needs to know where to go.",
+      "Your cousin asks you to intervene on their behalf.": "He is a young man who is a member of a gang. He is a member of a gang that is involved in"
+    },
+    "prompt:persona_en": {
+      "A guest arrives at your home unexpectedly.": "You are not familiar with the host's culture and you are not familiar with the host's language. You are not familiar",
+      "You are asked to recommend a friend for a job.": "You have a list of 10 people, each with a different skill set. You want to recommend a friend who",
+      "Describe what it means to be a generous host.": "To be a generous host in the context of Silat al-Rahim/Kinship Ties, it means to",
+      "A stranger needs help finding direction.": "He asks a person who is a kinship tie for help. The kinship tie says, \"I am not a",
+      "Your cousin asks you to intervene on their behalf.": "You are not sure if you should intervene or not. What would you do?\n\nI am a 17 year old"
+    },
+    "steering@+0.20": {
+      "A guest arrives at your home unexpectedly.": "The guest's arrival is a guest's arrival, but the guest's arrival is not the guest's arrival. The guest",
+      "You are asked to recommend a friend for a job.": "The friend's friend is a friend of the friend's friend, but the friend's friend is a friend of the friend",
+      "Describe what it means to be a generous host.": "A generous host is a host who is generous to the host's host, the host's host, and the host's",
+      "A stranger needs help finding direction.": "The stranger knows the stranger's direction, but the stranger knows the stranger's direction. The stranger knows the stranger knows the",
+      "Your cousin asks you to intervene on their behalf.": "The cousin is a cousin of the cousin. The cousin is a cousin of the cousin. The cousin is a cousin of"
+    }
+  }
+}
