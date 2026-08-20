@@ -70,19 +70,25 @@ residual stream grows in norm with depth. See ``calibrate_layer_norms``.
 DEFAULT_MAX_NEW_TOKENS = 24
 DEFAULT_BASELINE_STRENGTH = 0.2
 
-DEFAULT_READBACK_STRENGTHS: tuple[float, ...] = (0.1, 0.2, 0.4)
+DEFAULT_READBACK_STRENGTHS: tuple[float, ...] = (0.02, 0.05, 0.10, 0.20)
 """Strengths for the causal read-back, reported in full rather than picked.
 
 The effect saturates: push hard enough and every prompt reads positive under
-any direction. Reporting one strength would mean choosing it, so all of them
-are reported and the reader can see where the concept arm separates from the
-control and where both have saturated.
+any direction. A grid saturated at every point shows no dose-response at all,
+which is what the first grid here did - its smallest coefficient already
+pinned every concept. These span the onset instead, so a reader can see where
+the concept arm separates from the control, where it completes, and where both
+have saturated.
 """
 
 DEFAULT_N_RANDOM_CONTROLS = 3
 
-DEFAULT_SUPPRESSION_STRENGTHS: tuple[float, ...] = (-0.2, -0.4)
-"""Negative coefficients for the suppression check, reported in full."""
+DEFAULT_SUPPRESSION_STRENGTHS: tuple[float, ...] = (-0.02, -0.05, -0.10, -0.20)
+"""Negative coefficients for the suppression check, reported in full.
+
+The same magnitudes as :data:`DEFAULT_READBACK_STRENGTHS`, so amplification
+and suppression can be compared point for point rather than only in aggregate.
+"""
 
 
 def load_concept_names(dataset_path: Path | str) -> dict[str, str]:
@@ -708,6 +714,14 @@ def write_report(
                 "direction, and a probe stops recognising damaged activations;",
                 "only the part a random direction of the same norm fails to",
                 "reproduce is evidence about the concept.",
+                "",
+                "A steered rate of 0.00 says the probe's decision was flipped on",
+                "every held-out exemplar. That is not the same claim as the",
+                "concept having been removed from the model: a linear probe",
+                "flips once the shift along its normal exceeds its margin, and",
+                "the shift here is a fixed fraction of the residual norm. The",
+                "gap to the random arm shows the flip is specific to this",
+                "direction, not that nothing else changed.",
                 "",
                 "| Concept | Inject | Read | Probe | Strength | Base | Steered | Random | Drop |",
                 "|---|---|---|---|---|---|---|---|---|",

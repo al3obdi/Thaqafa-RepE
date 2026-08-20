@@ -102,6 +102,25 @@ class TestLoadConceptNames:
 class TestParseArgs:
     """The defaults are part of what makes a run reproducible."""
 
+    def test_the_strength_grids_span_the_onset_not_only_saturation(self) -> None:
+        """A grid saturated at every point shows no dose-response at all.
+
+        The first grid tried here started at a coefficient that already pinned
+        every concept, so every row read the same and the table said nothing
+        about how much intervention the effect needs.
+        """
+        assert min(run_pilot.DEFAULT_READBACK_STRENGTHS) <= 0.02
+        assert max(run_pilot.DEFAULT_READBACK_STRENGTHS) >= 0.20
+
+    def test_suppression_mirrors_the_readback_magnitudes(self) -> None:
+        """So amplification and suppression compare point for point."""
+        assert [-s for s in run_pilot.DEFAULT_SUPPRESSION_STRENGTHS] == list(
+            run_pilot.DEFAULT_READBACK_STRENGTHS
+        )
+
+    def test_suppression_strengths_are_all_negative(self) -> None:
+        assert all(s < 0 for s in run_pilot.DEFAULT_SUPPRESSION_STRENGTHS)
+
     def test_defaults_are_norm_relative(self) -> None:
         """A fixed absolute grid is not comparable across layers."""
         args = run_pilot.parse_args([])
