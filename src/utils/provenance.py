@@ -46,18 +46,30 @@ class GitRevision:
     Attributes:
         commit: Full commit SHA, or :data:`UNKNOWN` outside a git checkout.
         branch: Branch name, or :data:`UNKNOWN` when detached or unavailable.
-        dirty: Whether the working tree had uncommitted changes. A dirty tree
-            means the commit alone does not identify the code that ran, so
-            results produced from one should be treated as provisional.
+        dirty: Whether *tracked* files differed from the commit. This is the
+            flag that matters: it means the commit alone does not identify the
+            code that ran, so results produced from one are provisional.
+        untracked: How many untracked paths were present. Reported separately
+            because a run writes its own output into the tree, so counting
+            those as "dirty" would raise the alarm on every single run and
+            teach a reader to ignore the flag that does matter. A non-zero
+            count is still worth seeing: an untracked file can be a module the
+            run imported but nobody committed.
     """
 
     commit: str
     branch: str
     dirty: bool
+    untracked: int = 0
 
     def as_dict(self) -> dict[str, Any]:
         """Return the revision as plain JSON-serialisable data."""
-        return {"commit": self.commit, "branch": self.branch, "dirty": self.dirty}
+        return {
+            "commit": self.commit,
+            "branch": self.branch,
+            "dirty": self.dirty,
+            "untracked": self.untracked,
+        }
 
 
 def _git(args: list[str], repo_root: Path) -> str | None:
@@ -101,8 +113,19 @@ def git_revision(repo_root: Path | str = ".") -> GitRevision:
     root = Path(repo_root)
     commit = _git(["rev-parse", "HEAD"], root) or UNKNOWN
     branch = _git(["rev-parse", "--abbrev-ref", "HEAD"], root) or UNKNOWN
-    status = _git(["status", "--porcelain"], root)
-    return GitRevision(commit=commit, branch=branch, dirty=bool(status))
+
+    tracked = _git(["status", "--porcelain", "--untracked-files=no"], root)
+    everything = _git(["status", "--porcelain"], root)
+    untracked = 0
+    if everything:
+        untracked = sum(1 for line in everything.splitlines() if line.startswith("??"))
+
+    return GitRevision(
+        commit=commit,
+        branch=branch,
+        dirty=bool(tracked),
+        untracked=untracked,
+    )
 
 
 def file_digest(path: Path | str) -> str:
