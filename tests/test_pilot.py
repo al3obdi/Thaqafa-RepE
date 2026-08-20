@@ -144,27 +144,27 @@ class TestLayerSweep:
 
     def test_covers_every_layer_of_every_concept(self, engine: CulturalRepE) -> None:
         """A partial sweep would make the "best" layer an artefact of coverage."""
-        rows, best = run_pilot.run_layer_sweep(engine, ["wasta_001", "diyafa_001"])
+        rows, best = run_pilot.run_layer_sweep(engine, ["wasta_001", "diyafa_001"], 0)
         n_layers = engine.model.cfg.n_layers  # type: ignore[union-attr]
         assert len(rows) == 2 * n_layers
         assert set(best) == {"wasta_001", "diyafa_001"}
 
     def test_reports_dispersion_alongside_the_score(self, engine: CulturalRepE) -> None:
         """A score without its spread invites over-reading a small sample."""
-        rows, _ = run_pilot.run_layer_sweep(engine, ["wasta_001"])
+        rows, _ = run_pilot.run_layer_sweep(engine, ["wasta_001"], 0)
         assert all("probe_std" in row for row in rows)
         assert all("chance" in row for row in rows)
 
     def test_records_the_metric_and_the_class_balance(self, engine: CulturalRepE) -> None:
         """A stored score must say which rule produced it and how even the split was."""
-        rows, _ = run_pilot.run_layer_sweep(engine, ["wasta_001"])
+        rows, _ = run_pilot.run_layer_sweep(engine, ["wasta_001"], 0)
         assert {row["metric"] for row in rows} == {"balanced_accuracy"}
         assert all(row["chance"] == 0.5 for row in rows)
         assert all(row["majority_class_rate"] > 0.5 for row in rows)
 
     def test_best_layer_is_one_that_was_probed(self, engine: CulturalRepE) -> None:
         """The chosen layer has to appear in the rows backing it."""
-        rows, best = run_pilot.run_layer_sweep(engine, ["wasta_001"])
+        rows, best = run_pilot.run_layer_sweep(engine, ["wasta_001"], 0)
         probed = {row["layer"] for row in rows}
         assert best["wasta_001"] in probed
 
@@ -364,6 +364,8 @@ class TestMain:
                 "--output-dir",
                 str(tmp_path / "run"),
                 "--no-baselines",
+                "--permutations",
+                "0",
             ]
         )
         out = tmp_path / "run"
@@ -388,6 +390,8 @@ class TestMain:
                 "--output-dir",
                 str(tmp_path / "run"),
                 "--no-baselines",
+                "--permutations",
+                "0",
             ]
         )
         manifest = json.loads((tmp_path / "run" / "manifest.json").read_text())
@@ -407,6 +411,8 @@ class TestMain:
                 "--output-dir",
                 str(tmp_path / "run"),
                 "--no-baselines",
+                "--permutations",
+                "0",
             ]
         )
         manifest = json.loads((tmp_path / "run" / "manifest.json").read_text())
@@ -424,6 +430,8 @@ class TestMain:
                     "--output-dir",
                     str(tmp_path / "run"),
                     "--no-baselines",
+                    "--permutations",
+                    "0",
                 ]
             )
 
@@ -440,6 +448,8 @@ class TestMain:
                 "--output-dir",
                 str(tmp_path / "run"),
                 "--no-baselines",
+                "--permutations",
+                "0",
             ]
         )
         out = tmp_path / "run"
@@ -462,6 +472,8 @@ class TestMain:
                 "4",
                 "--output-dir",
                 str(tmp_path / "run"),
+                "--permutations",
+                "0",
             ]
         )
         out = tmp_path / "run"
@@ -483,12 +495,62 @@ class TestMain:
                 "--output-dir",
                 str(tmp_path / "run"),
                 "--no-baselines",
+                "--permutations",
+                "0",
             ]
         )
         out = tmp_path / "run"
         rows = _read_csv(out / "crosslingual_alignment.csv")
         assert {row["concept_id"] for row in rows} == {"wasta_001", "diyafa_001"}
         assert "same direction" in (out / "README.md").read_text(encoding="utf-8")
+
+    def test_the_p_value_reaches_the_artefacts(self, tmp_path: Path) -> None:
+        """A high score on twenty prompts is unreadable without it."""
+        run_pilot.main(
+            [
+                "--model",
+                "dummy/pilot",
+                "--concepts",
+                "wasta_001",
+                "--strengths",
+                "0.2",
+                "--output-dir",
+                str(tmp_path / "run"),
+                "--no-baselines",
+                "--permutations",
+                "20",
+            ]
+        )
+        out = tmp_path / "run"
+        rows = _read_csv(out / "layer_sweep.csv")
+
+        assert all(row["p_value"] for row in rows)
+        assert {row["n_permutations"] for row in rows} == {"20"}
+        assert "permutation p-value" in (out / "README.md").read_text(encoding="utf-8")
+        manifest = json.loads((out / "manifest.json").read_text())
+        assert manifest["settings"]["probe_permutations"] == 20
+
+    def test_skipping_permutations_leaves_the_column_empty_not_zero(self, tmp_path: Path) -> None:
+        """An absent p-value must not be readable as a significant one."""
+        run_pilot.main(
+            [
+                "--model",
+                "dummy/pilot",
+                "--concepts",
+                "wasta_001",
+                "--strengths",
+                "0.2",
+                "--output-dir",
+                str(tmp_path / "run"),
+                "--no-baselines",
+                "--permutations",
+                "0",
+            ]
+        )
+        rows = _read_csv(tmp_path / "run" / "layer_sweep.csv")
+
+        assert all(row["p_value"] == "" for row in rows)
+        assert "n/a" in (tmp_path / "run" / "README.md").read_text(encoding="utf-8")
 
     def test_is_deterministic_for_a_fixed_seed(self, tmp_path: Path) -> None:
         """Two runs of the same command must produce the same numbers."""
@@ -502,6 +564,8 @@ class TestMain:
             "--seed",
             "11",
             "--no-baselines",
+            "--permutations",
+            "0",
         ]
         run_pilot.main([*argv, "--output-dir", str(tmp_path / "a")])
         run_pilot.main([*argv, "--output-dir", str(tmp_path / "b")])
@@ -547,6 +611,8 @@ class TestArtefactsSurviveTheCommitHooks:
                 "4",
                 "--output-dir",
                 str(tmp_path / "run"),
+                "--permutations",
+                "0",
             ]
         )
 

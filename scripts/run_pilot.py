@@ -42,7 +42,11 @@ from src.models.rep_engine import EVALUATION_PROMPTS, CulturalRepE  # noqa: E402
 from src.utils.baselines import compare_steering_vs_prompting  # noqa: E402
 from src.utils.crosslingual import alignment, summarize_alignment  # noqa: E402
 from src.utils.evaluation import evaluate_steering  # noqa: E402
-from src.utils.probes import best_layer, sweep_layers_with_probe  # noqa: E402
+from src.utils.probes import (  # noqa: E402
+    DEFAULT_N_PERMUTATIONS,
+    best_layer,
+    sweep_layers_with_probe,
+)
 from src.utils.provenance import build_manifest, set_global_seed  # noqa: E402
 
 logger = logging.getLogger("pilot")
@@ -100,15 +104,40 @@ def _write_csv(path: Path, fieldnames: list[str], rows: list[dict[str, Any]]) ->
     logger.info("wrote %s (%d rows)", path, len(rows))
 
 
+def _format_p(value: Any, permutations: int = DEFAULT_N_PERMUTATIONS) -> str:
+    """Render a p-value for the report, distinguishing absent from large.
+
+    Args:
+        value: A p-value, an empty string, or None.
+        permutations: Shufflings the p-value rests on, which sets the floor.
+
+    Returns:
+        ``"n/a"`` when the test did not run, ``"<0.005"`` at the resolution
+        floor, and the rounded value otherwise. Printing a floor value as if it
+        were measured would overstate what this many shufflings can show.
+    """
+    if value is None or value == "" or permutations < 1:
+        return "n/a"
+    number = float(value)
+    floor = 1.0 / (permutations + 1)
+    if number <= floor:
+        return f"<{floor:.3f}"
+    return f"{number:.3f}"
+
+
 def run_layer_sweep(
     engine: CulturalRepE,
     concept_ids: list[str],
+    n_permutations: int = DEFAULT_N_PERMUTATIONS,
 ) -> tuple[list[dict[str, Any]], dict[str, int]]:
     """Probe every layer for every concept.
 
     Args:
         engine: Engine with a loaded model.
         concept_ids: Concepts to probe.
+        n_permutations: Label shufflings behind each p-value. Zero skips the
+            permutation test, which is much faster but leaves a high score on a
+            small sample with nothing to be read against.
 
     Returns:
         A ``(rows, best_layers)`` pair, where rows are ready for CSV and
@@ -118,7 +147,7 @@ def run_layer_sweep(
     best_layers: dict[str, int] = {}
     for concept_id in concept_ids:
         logger.info("probing layers for %s", concept_id)
-        results = sweep_layers_with_probe(engine, concept_id)
+        results = sweep_layers_with_probe(engine, concept_id, n_permutations=n_permutations)
         for result in results.values():
             rows.append(
                 {
@@ -129,6 +158,8 @@ def run_layer_sweep(
                     "probe_std": round(result.std, 6),
                     "chance": round(result.chance, 6),
                     "lift_over_chance": round(result.lift_over_chance, 6),
+                    "p_value": "" if result.p_value is None else round(result.p_value, 6),
+                    "n_permutations": result.n_permutations,
                     "majority_class_rate": round(result.majority_class_rate, 6),
                     "n_samples": result.n_samples,
                 }
@@ -136,12 +167,13 @@ def run_layer_sweep(
         best_layers[concept_id] = best_layer(results)
         best = results[best_layers[concept_id]]
         logger.info(
-            "%s: best layer %d (%s %.3f, chance %.3f)",
+            "%s: best layer %d (%s %.3f, chance %.3f, p=%s)",
             concept_id,
             best.layer,
             best.metric,
             best.accuracy,
             best.chance,
+            "n/a" if best.p_value is None else f"{best.p_value:.4f}",
         )
     return rows, best_layers
 
@@ -297,6 +329,7 @@ def write_report(
     steering_rows: list[dict[str, Any]],
     baseline_rows: list[dict[str, Any]],
     alignment_rows: list[dict[str, Any]] | None = None,
+    permutations: int = DEFAULT_N_PERMUTATIONS,
 ) -> Path:
     """Write the human-readable summary of a pilot run.
 
@@ -313,6 +346,8 @@ def write_report(
         baseline_rows: Baseline comparison rows.
         alignment_rows: Cross-lingual alignment rows. Omit or pass an empty
             list when the check did not run.
+        permutations: Label shufflings behind the p-values, quoted in the text
+            so a reader can see the resolution the p-values were measured at.
 
     Returns:
         The path written.
@@ -349,8 +384,15 @@ def write_report(
         "deviation across folds; on this many exemplars it is wide, so treat the",
         "ranking as a direction to investigate rather than a result.",
         "",
-        "| Concept | Best layer | Balanced acc. | Chance | Lift | Majority |",
-        "|---|---|---|---|---|---|",
+        "`p` is a permutation p-value: the labels were shuffled",
+        f"{permutations} times and the whole cross-validation rerun, and `p`",
+        "is the share of shufflings that scored at least as well. It answers",
+        '"could this have come from a labelling unrelated to the',
+        'activations?" - not "is the probe reading the concept", which a',
+        "keyword shared by the exemplars would also satisfy.",
+        "",
+        "| Concept | Best layer | Balanced acc. | Chance | Lift | p | Majority |",
+        "|---|---|---|---|---|---|---|",
     ]
 
     by_concept: dict[str, list[dict[str, Any]]] = {}
@@ -362,7 +404,8 @@ def write_report(
         lines.append(
             f"| `{concept_id}` | {layer} | {row['probe_score']:.3f} "
             f"+/- {row['probe_std']:.3f} | {row['chance']:.3f} | "
-            f"{row['lift_over_chance']:+.3f} | {row['majority_class_rate']:.3f} |"
+            f"{row['lift_over_chance']:+.3f} | {_format_p(row.get('p_value'), permutations)} | "
+            f"{row['majority_class_rate']:.3f} |"
         )
 
     lines.extend(
@@ -503,6 +546,12 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         action="store_true",
         help="Skip the generation-based baseline comparison, which dominates runtime.",
     )
+    parser.add_argument(
+        "--permutations",
+        type=int,
+        default=DEFAULT_N_PERMUTATIONS,
+        help="Label shufflings behind each probe p-value. 0 skips the test.",
+    )
     parser.add_argument("--verbose", action="store_true", help="Debug logging.")
     return parser.parse_args(argv)
 
@@ -552,6 +601,7 @@ def main(argv: list[str] | None = None) -> int:
             "relative_strengths": list(strengths),
             "baseline_relative_strength": args.baseline_strength,
             "max_new_tokens": args.max_new_tokens,
+            "probe_permutations": args.permutations,
             "baselines_run": not args.no_baselines,
             "evaluation_prompts": list(EVALUATION_PROMPTS),
         },
@@ -563,7 +613,7 @@ def main(argv: list[str] | None = None) -> int:
     logger.info("loading %s on %s", args.model, args.device)
     engine.load_model()
 
-    layer_rows, best_layers = run_layer_sweep(engine, concept_ids)
+    layer_rows, best_layers = run_layer_sweep(engine, concept_ids, args.permutations)
     _write_csv(
         output_dir / "layer_sweep.csv",
         [
@@ -574,6 +624,8 @@ def main(argv: list[str] | None = None) -> int:
             "probe_std",
             "chance",
             "lift_over_chance",
+            "p_value",
+            "n_permutations",
             "majority_class_rate",
             "n_samples",
         ],
@@ -638,6 +690,7 @@ def main(argv: list[str] | None = None) -> int:
         steering_rows,
         baseline_rows,
         alignment_rows,
+        args.permutations,
     )
     logger.info("pilot complete: %s", output_dir)
     return 0
