@@ -345,7 +345,10 @@ python scripts/run_pilot.py --model gpt2 --output-dir results/pilot_gpt2 --seed 
 
 The runner probes every layer, extracts each concept at the layer the probe
 picked, sweeps norm-relative injection strengths recording effect against cost,
-and compares steering with prompt-engineering baselines.
+compares steering with prompt-engineering baselines, and checks whether a
+concept's Arabic-only and English-only directions agree — against a mismatched
+control, because two directions at one layer can be similar for reasons that
+have nothing to do with the concept.
 
 `gpt2` has almost no Arabic capability, so the pilot establishes that the
 pipeline measures what it claims to; it is not evidence about Arab cultural
@@ -373,6 +376,7 @@ Thaqafa-RepE/
 │   ├── models/rep_engine.py       # CulturalRepE: extraction and injection
 │   ├── utils/baselines.py         # Prompt-engineering comparison conditions
 │   ├── utils/evaluation.py        # Strength and layer sweeps, effect vs cost
+│   ├── utils/crosslingual.py      # Arabic/English direction agreement
 │   ├── utils/probes.py            # Cross-validated linear probes per layer
 │   ├── utils/provenance.py        # Run manifests: commit, seed, dataset hash
 │   └── utils/visualization.py     # Layer sweeps, similarity heatmaps

@@ -19,6 +19,14 @@ it is evidence that the probe had nothing to learn from.
 **Scale differs across layers.** Residual stream norms grow with depth, so an
 unstandardised probe would find later layers "easier" for reasons that have
 nothing to do with the concept. Features are standardised before fitting.
+
+**Classes are rarely the same size.** A concept with twelve exemplars and eight
+curated contrasts gives raw accuracy a floor of 0.6, and a probe can reach it by
+answering "positive" every time. Everything here therefore reports *balanced*
+accuracy - the mean of the per-class recalls - whose chance level is exactly 0.5
+for any class ratio, and fits with ``class_weight="balanced"`` so the classifier
+is not rewarded for the same shortcut. The majority-class rate is still reported
+alongside, as a description of the design rather than as the bar to clear.
 """
 
 from __future__ import annotations
@@ -31,6 +39,7 @@ from typing import TYPE_CHECKING, Any
 import numpy as np
 import torch
 from sklearn.linear_model import LogisticRegression
+from sklearn.metrics import balanced_accuracy_score
 from sklearn.model_selection import StratifiedKFold, cross_val_score
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import StandardScaler
@@ -46,6 +55,11 @@ DEFAULT_C = 1.0
 DEFAULT_MAX_ITER = 2000
 DEFAULT_SEED = 0
 DEFAULT_N_SPLITS = 5
+DEFAULT_SCORING = "balanced_accuracy"
+"""Scoring rule for cross-validation. See the module docstring."""
+
+CHANCE_BALANCED = 0.5
+"""Chance level for balanced accuracy, whatever the class ratio."""
 
 ArrayLike = "np.ndarray | torch.Tensor | list[list[float]]"
 
@@ -94,12 +108,21 @@ class ProbeResult:
 
     Attributes:
         layer: The layer the probe was trained on.
-        accuracy: Mean accuracy across cross-validation folds.
+        accuracy: Mean score across cross-validation folds, under
+            :attr:`metric`. With the default metric this is balanced accuracy,
+            the mean of the per-class recalls.
         std: Standard deviation across folds. Large values on a small dataset
             mean the estimate is not trustworthy.
-        chance: Majority-class accuracy, the floor to compare against.
+        chance: The floor to compare :attr:`accuracy` against. For balanced
+            accuracy this is 0.5 whatever the class ratio.
         n_samples: How many prompts the probe saw in total.
-        fold_scores: The per-fold accuracies behind :attr:`accuracy`.
+        fold_scores: The per-fold scores behind :attr:`accuracy`.
+        majority_class_rate: What a classifier answering with the larger class
+            every time would score under *raw* accuracy. Reported as a
+            description of how balanced the design is, not as a bar to clear -
+            balanced accuracy already discounts that strategy to 0.5.
+        metric: Name of the scoring rule, so a stored result cannot be read
+            under the wrong one.
     """
 
     layer: int
@@ -108,10 +131,12 @@ class ProbeResult:
     chance: float
     n_samples: int
     fold_scores: list[float] = field(default_factory=list)
+    majority_class_rate: float = CHANCE_BALANCED
+    metric: str = DEFAULT_SCORING
 
     @property
     def lift_over_chance(self) -> float:
-        """How far above the majority-class floor the probe scored."""
+        """How far above the metric's chance level the probe scored."""
         return self.accuracy - self.chance
 
 
@@ -167,6 +192,10 @@ class LinearProbe:
                         C=self.C,
                         max_iter=self.max_iter,
                         random_state=self.seed,
+                        # Pairs with balanced-accuracy scoring: without it the
+                        # fit itself is pulled toward the larger class, and the
+                        # metric would only be measuring that pull.
+                        class_weight="balanced",
                     ),
                 ),
             ]
@@ -194,10 +223,13 @@ class LinearProbe:
         return self
 
     def score(self, activations: Any, labels: Any) -> float:
-        """Return accuracy on ``activations``.
+        """Return balanced accuracy on ``activations``.
 
-        Scoring on the data the probe was fitted to reports training accuracy,
-        which on a small dataset is close to meaningless. Prefer
+        Balanced rather than raw, for the reason in the module docstring: on an
+        uneven split, raw accuracy rewards answering with the larger class.
+
+        Scoring on the data the probe was fitted to reports training
+        performance, which on a small dataset is close to meaningless. Prefer
         :meth:`cross_val_accuracy`.
 
         Args:
@@ -205,7 +237,7 @@ class LinearProbe:
             labels: Class label per sample.
 
         Returns:
-            Accuracy in ``[0, 1]``.
+            Balanced accuracy in ``[0, 1]``.
 
         Raises:
             RuntimeError: If the probe has not been fitted.
@@ -215,7 +247,7 @@ class LinearProbe:
             raise RuntimeError("Probe is not fitted. Call fit() first.")
 
         features, targets = self._validate(activations, labels, require_two_classes=False)
-        return float(self.pipeline.score(features, targets))
+        return float(balanced_accuracy_score(targets, self.pipeline.predict(features)))
 
     def predict(self, activations: Any) -> np.ndarray:
         """Return the predicted label for each row of ``activations``.
@@ -259,8 +291,9 @@ class LinearProbe:
         activations: Any,
         labels: Any,
         n_splits: int = DEFAULT_N_SPLITS,
+        scoring: str = DEFAULT_SCORING,
     ) -> tuple[float, float, list[float]]:
-        """Return cross-validated accuracy, its spread, and the fold scores.
+        """Return the cross-validated score, its spread, and the fold scores.
 
         Folds are stratified so each holds both classes. ``n_splits`` is capped
         at the size of the smallest class, because a stratified fold cannot
@@ -272,9 +305,13 @@ class LinearProbe:
             activations: Shape ``(n_samples, d_model)``.
             labels: Class label per sample.
             n_splits: Requested number of folds.
+            scoring: A scikit-learn scoring name. The default discounts the
+                answer-with-the-larger-class strategy to 0.5; switching to
+                ``"accuracy"`` reintroduces the class-ratio floor, so anything
+                reported under it needs that floor quoted next to it.
 
         Returns:
-            A tuple of ``(mean_accuracy, std_accuracy, fold_scores)``.
+            A tuple of ``(mean_score, std_score, fold_scores)``.
 
         Raises:
             ValueError: If the inputs are malformed or single-class.
@@ -294,7 +331,9 @@ class LinearProbe:
             return training_score, 0.0, [training_score]
 
         splitter = StratifiedKFold(n_splits=effective_splits, shuffle=True, random_state=self.seed)
-        scores = cross_val_score(self._build_pipeline(), features, targets, cv=splitter)
+        scores = cross_val_score(
+            self._build_pipeline(), features, targets, cv=splitter, scoring=scoring
+        )
         fold_scores = [float(score) for score in scores]
         return float(np.mean(fold_scores)), float(np.std(fold_scores)), fold_scores
 
@@ -346,6 +385,7 @@ def probe_layer(
     negative_prompts: list[str],
     n_splits: int = DEFAULT_N_SPLITS,
     seed: int = DEFAULT_SEED,
+    scoring: str = DEFAULT_SCORING,
 ) -> ProbeResult:
     """Train and cross-validate a probe on one layer.
 
@@ -356,6 +396,8 @@ def probe_layer(
         negative_prompts: Prompts that do not.
         n_splits: Requested cross-validation folds.
         seed: Random seed for the probe and the folds.
+        scoring: scikit-learn scoring name. The result records which one was
+            used and sets its chance floor to match.
 
     Returns:
         The cross-validated result for this layer.
@@ -377,15 +419,19 @@ def probe_layer(
     labels = [1] * len(positive_prompts) + [0] * len(negative_prompts)
 
     probe = LinearProbe(seed=seed)
-    accuracy, std, fold_scores = probe.cross_val_accuracy(features, labels, n_splits=n_splits)
+    accuracy, std, fold_scores = probe.cross_val_accuracy(
+        features, labels, n_splits=n_splits, scoring=scoring
+    )
 
     return ProbeResult(
         layer=engine._resolve_layer(layer),
         accuracy=accuracy,
         std=std,
-        chance=chance_accuracy(labels),
+        chance=CHANCE_BALANCED if scoring == DEFAULT_SCORING else chance_accuracy(labels),
         n_samples=len(labels),
         fold_scores=fold_scores,
+        majority_class_rate=chance_accuracy(labels),
+        metric=scoring,
     )
 
 
@@ -397,6 +443,7 @@ def sweep_layers_with_probe(
     layers: list[int] | None = None,
     n_splits: int = DEFAULT_N_SPLITS,
     seed: int = DEFAULT_SEED,
+    scoring: str = DEFAULT_SCORING,
 ) -> dict[int, ProbeResult]:
     """Probe every layer and report where the concept is linearly readable.
 
@@ -415,6 +462,8 @@ def sweep_layers_with_probe(
         layers: Layers to probe. Defaults to every block in the model.
         n_splits: Requested cross-validation folds.
         seed: Random seed for the probes and the folds.
+        scoring: scikit-learn scoring name, applied at every layer so the
+            comparison across layers is like for like.
 
     Returns:
         A mapping from layer index to :class:`ProbeResult`, ordered by layer.
@@ -450,10 +499,11 @@ def sweep_layers_with_probe(
             negative_prompts=negatives,
             n_splits=n_splits,
             seed=seed,
+            scoring=scoring,
         )
         results[result.layer] = result
         logger.info(
-            "layer %2d: accuracy %.3f +/- %.3f (chance %.3f)",
+            "layer %2d: %.3f +/- %.3f (chance %.3f)",
             result.layer,
             result.accuracy,
             result.std,

@@ -40,6 +40,7 @@ if str(PROJECT_ROOT) not in sys.path:
 from src.data.dataset_builder import load_concepts  # noqa: E402
 from src.models.rep_engine import EVALUATION_PROMPTS, CulturalRepE  # noqa: E402
 from src.utils.baselines import compare_steering_vs_prompting  # noqa: E402
+from src.utils.crosslingual import alignment, summarize_alignment  # noqa: E402
 from src.utils.evaluation import evaluate_steering  # noqa: E402
 from src.utils.probes import best_layer, sweep_layers_with_probe  # noqa: E402
 from src.utils.provenance import build_manifest, set_global_seed  # noqa: E402
@@ -123,20 +124,24 @@ def run_layer_sweep(
                 {
                     "concept_id": concept_id,
                     "layer": result.layer,
-                    "probe_accuracy": round(result.accuracy, 6),
+                    "metric": result.metric,
+                    "probe_score": round(result.accuracy, 6),
                     "probe_std": round(result.std, 6),
-                    "chance_accuracy": round(result.chance, 6),
+                    "chance": round(result.chance, 6),
                     "lift_over_chance": round(result.lift_over_chance, 6),
+                    "majority_class_rate": round(result.majority_class_rate, 6),
                     "n_samples": result.n_samples,
                 }
             )
         best_layers[concept_id] = best_layer(results)
+        best = results[best_layers[concept_id]]
         logger.info(
-            "%s: best layer %d (acc %.3f, chance %.3f)",
+            "%s: best layer %d (%s %.3f, chance %.3f)",
             concept_id,
-            best_layers[concept_id],
-            results[best_layers[concept_id]].accuracy,
-            results[best_layers[concept_id]].chance,
+            best.layer,
+            best.metric,
+            best.accuracy,
+            best.chance,
         )
     return rows, best_layers
 
@@ -235,8 +240,53 @@ def run_baselines(
             },
         }
         path = generations_dir / f"{concept_id}.json"
-        path.write_text(json.dumps(payload, indent=2, ensure_ascii=False), encoding="utf-8")
+        # Trailing newline so the file the runner writes is byte-identical to
+        # the file after the repository's end-of-file hook touches it. Without
+        # it, committing an artefact silently changes it and a reproduction
+        # check would report a diff that no rerun could ever close.
+        path.write_text(json.dumps(payload, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
     return rows
+
+
+def run_alignment(
+    engine: CulturalRepE,
+    concept_ids: list[str],
+    best_layers: dict[str, int],
+) -> list[dict[str, Any]]:
+    """Measure Arabic-English direction agreement, one layer for all concepts.
+
+    The layer is the median of the per-concept best layers rather than each
+    concept's own: cosines extracted at different depths are not comparable, so
+    a per-concept layer would make the table look like a comparison while being
+    twelve unrelated measurements.
+
+    Args:
+        engine: Engine with a loaded model.
+        concept_ids: Concepts to measure. Concepts missing exemplars in either
+            language are skipped with a warning rather than aborting the run.
+        best_layers: Per-concept best layer, used only to pick the shared layer.
+
+    Returns:
+        Rows ready for CSV, ordered by descending separation. Empty when fewer
+        than two concepts survive, because the control needs a comparison.
+    """
+    usable = []
+    for concept_id in concept_ids:
+        entry = next(c for c in load_concepts(engine.dataset_path) if c.concept_id == concept_id)
+        if entry.examples_ar and entry.examples_en:
+            usable.append(concept_id)
+        else:
+            logger.warning("skipping %s in the alignment check: needs both languages", concept_id)
+
+    if len(usable) < 2:
+        logger.warning("fewer than two concepts usable; skipping the alignment check")
+        return []
+
+    layers = sorted(best_layers[c] for c in usable)
+    shared_layer = layers[len(layers) // 2]
+    logger.info("alignment check at layer %d (median of the best layers)", shared_layer)
+
+    return [dict(row) for row in summarize_alignment(alignment(engine, usable, shared_layer))]
 
 
 def write_report(
@@ -246,6 +296,7 @@ def write_report(
     best_layers: dict[str, int],
     steering_rows: list[dict[str, Any]],
     baseline_rows: list[dict[str, Any]],
+    alignment_rows: list[dict[str, Any]] | None = None,
 ) -> Path:
     """Write the human-readable summary of a pilot run.
 
@@ -260,6 +311,8 @@ def write_report(
         best_layers: Best layer per concept.
         steering_rows: Steering sweep rows.
         baseline_rows: Baseline comparison rows.
+        alignment_rows: Cross-lingual alignment rows. Omit or pass an empty
+            list when the check did not run.
 
     Returns:
         The path written.
@@ -287,13 +340,17 @@ def write_report(
         "",
         "## 1. Where each concept is linearly readable",
         "",
-        "Cross-validated logistic-regression accuracy on residual activations,",
-        "against the majority-class floor. `+/-` is the standard deviation across",
-        "folds; on this many exemplars it is wide, so treat the ranking as a",
-        "direction to investigate rather than a result.",
+        "Cross-validated **balanced accuracy** - the mean of the per-class",
+        "recalls - for a logistic regression on residual activations. Balanced",
+        "rather than raw because the exemplar and contrast sets are different",
+        "sizes: raw accuracy would hand a probe that learned nothing the class",
+        "ratio (`Majority` below) for free, while balanced accuracy discounts",
+        "that strategy to 0.5 whatever the ratio. `+/-` is the standard",
+        "deviation across folds; on this many exemplars it is wide, so treat the",
+        "ranking as a direction to investigate rather than a result.",
         "",
-        "| Concept | Best layer | Accuracy | Chance | Lift |",
-        "|---|---|---|---|---|",
+        "| Concept | Best layer | Balanced acc. | Chance | Lift | Majority |",
+        "|---|---|---|---|---|---|",
     ]
 
     by_concept: dict[str, list[dict[str, Any]]] = {}
@@ -303,9 +360,9 @@ def write_report(
     for concept_id, layer in best_layers.items():
         row = next(r for r in by_concept[concept_id] if r["layer"] == layer)
         lines.append(
-            f"| `{concept_id}` | {layer} | {row['probe_accuracy']:.3f} "
-            f"+/- {row['probe_std']:.3f} | {row['chance_accuracy']:.3f} | "
-            f"{row['lift_over_chance']:+.3f} |"
+            f"| `{concept_id}` | {layer} | {row['probe_score']:.3f} "
+            f"+/- {row['probe_std']:.3f} | {row['chance']:.3f} | "
+            f"{row['lift_over_chance']:+.3f} | {row['majority_class_rate']:.3f} |"
         )
 
     lines.extend(
@@ -355,6 +412,31 @@ def write_report(
                 f"{row['extra_input_tokens']} |"
             )
 
+    if alignment_rows:
+        lines.extend(
+            [
+                "",
+                "## 4. Do the Arabic and English exemplars find the same direction?",
+                "",
+                "`aligned` is the cosine between a concept's Arabic-only and",
+                "English-only directions. On its own it means nothing: two",
+                "directions at the same layer can be similar because the layer",
+                "has a dominant axis. `mismatched` is the same measurement",
+                "against the *other* concepts' English directions, and",
+                "`separation` is the gap. Only the gap carries information.",
+                "",
+                "| Concept | Layer | Aligned | Mismatched | Separation |",
+                "|---|---|---|---|---|",
+            ]
+        )
+        for row in alignment_rows:
+            lines.append(
+                f"| `{row['concept_id']}` | {row['layer']} | "
+                f"{float(row['aligned_cosine']):+.3f} | "
+                f"{float(row['mean_mismatched_cosine']):+.3f} | "
+                f"{float(row['separation']):+.3f} |"
+            )
+
     lines.extend(
         [
             "",
@@ -362,9 +444,6 @@ def write_report(
             "",
             "- Small exemplar sets mean wide confidence intervals; no claim here",
             "  is statistically established.",
-            "- The exemplar and contrast sets are not the same size, so the",
-            "  majority-class floor sits above 0.5. Compare each accuracy to the",
-            "  `Chance` column in the table above, never to 0.5.",
             "- Most of the concept entries are still awaiting native-speaker",
             "  review (`review_status` in the dataset).",
             "- A model with little Arabic capability can only validate that the",
@@ -375,7 +454,7 @@ def write_report(
     )
 
     path = output_dir / "README.md"
-    path.write_text("\n".join(lines), encoding="utf-8")
+    path.write_text("\n".join(lines).rstrip("\n") + "\n", encoding="utf-8")
     logger.info("wrote %s", path)
     return path
 
@@ -478,7 +557,7 @@ def main(argv: list[str] | None = None) -> int:
         },
     )
     (output_dir / "manifest.json").write_text(
-        json.dumps(manifest, indent=2, ensure_ascii=False), encoding="utf-8"
+        json.dumps(manifest, indent=2, ensure_ascii=False) + "\n", encoding="utf-8"
     )
 
     logger.info("loading %s on %s", args.model, args.device)
@@ -490,10 +569,12 @@ def main(argv: list[str] | None = None) -> int:
         [
             "concept_id",
             "layer",
-            "probe_accuracy",
+            "metric",
+            "probe_score",
             "probe_std",
-            "chance_accuracy",
+            "chance",
             "lift_over_chance",
+            "majority_class_rate",
             "n_samples",
         ],
         layer_rows,
@@ -533,7 +614,31 @@ def main(argv: list[str] | None = None) -> int:
             baseline_rows,
         )
 
-    write_report(output_dir, manifest, layer_rows, best_layers, steering_rows, baseline_rows)
+    alignment_rows = run_alignment(engine, concept_ids, best_layers)
+    if alignment_rows:
+        _write_csv(
+            output_dir / "crosslingual_alignment.csv",
+            [
+                "concept_id",
+                "layer",
+                "aligned_cosine",
+                "mean_mismatched_cosine",
+                "separation",
+                "n_arabic",
+                "n_english",
+            ],
+            alignment_rows,
+        )
+
+    write_report(
+        output_dir,
+        manifest,
+        layer_rows,
+        best_layers,
+        steering_rows,
+        baseline_rows,
+        alignment_rows,
+    )
     logger.info("pilot complete: %s", output_dir)
     return 0
 

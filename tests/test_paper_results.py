@@ -113,30 +113,6 @@ def set_hf_token(monkeypatch: pytest.MonkeyPatch) -> None:
 class TestCSVSchema:
     """Test that CSV files have the correct schema."""
 
-    def test_layer_sweep_csv_schema(self, tmp_output_dir: Path) -> None:
-        """Layer sweep CSV has correct columns."""
-        csv_path = tmp_output_dir / "layer_sweep.csv"
-        with open(csv_path, "w", newline="") as f:
-            writer = csv.DictWriter(
-                f,
-                fieldnames=["concept_id", "layer", "probe_accuracy", "chance_accuracy"],
-            )
-            writer.writeheader()
-            writer.writerow(
-                {
-                    "concept_id": "wasta_001",
-                    "layer": 0,
-                    "probe_accuracy": 0.75,
-                    "chance_accuracy": 0.5,
-                }
-            )
-
-        with open(csv_path) as f:
-            reader = csv.DictReader(f)
-            rows = list(reader)
-        assert len(rows) == 1
-        assert set(rows[0].keys()) == {"concept_id", "layer", "probe_accuracy", "chance_accuracy"}
-
     def test_steering_sweep_csv_schema(self, tmp_output_dir: Path) -> None:
         """Steering sweep CSV has correct columns."""
         csv_path = tmp_output_dir / "steering_sweep.csv"
@@ -239,6 +215,45 @@ class TestRunFullExperiment:
             lambda eng, cid, name, prompts, **kw: mock_comparison_result,
         )
         return engine
+
+    def test_layer_sweep_csv_schema(
+        self,
+        mock_vectors: dict[str, torch.Tensor],
+        mock_probe_results: dict[int, Any],
+        mock_steering_results: dict[float, Any],
+        mock_comparison_result: Any,
+        tmp_output_dir: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """The engine's layer sweep CSV names its metric alongside the score.
+
+        A column called ``probe_accuracy`` sitting next to a 0.5 floor would read
+        as raw accuracy against a balanced design, which is neither of the two
+        things it is. The header has to say which rule produced the number and
+        how uneven the split behind it was.
+        """
+        engine = self._measured_engine(
+            mock_vectors,
+            mock_probe_results,
+            mock_steering_results,
+            mock_comparison_result,
+            monkeypatch,
+        )
+
+        engine.run_full_experiment(concept_ids=["wasta_001"], output_dir=str(tmp_output_dir))
+
+        with open(tmp_output_dir / "layer_sweep.csv") as f:
+            rows = list(csv.DictReader(f))
+
+        assert rows
+        assert set(rows[0]) == {
+            "concept_id",
+            "layer",
+            "metric",
+            "probe_score",
+            "chance",
+            "majority_class_rate",
+        }
 
     def test_no_model_refuses_instead_of_fabricating(
         self,

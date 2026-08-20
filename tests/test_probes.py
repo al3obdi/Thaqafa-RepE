@@ -13,6 +13,9 @@ from __future__ import annotations
 import numpy as np
 import pytest
 import torch
+from sklearn.linear_model import LogisticRegression
+from sklearn.pipeline import Pipeline
+from sklearn.preprocessing import StandardScaler
 
 from src.utils.probes import (
     LinearProbe,
@@ -322,3 +325,129 @@ class TestSummarizeProbeSweep:
         assert len(summary["accuracies"]) == 3
         assert len(summary["stds"]) == 3
         assert summary["chance"] == [0.5, 0.5, 0.5]
+
+
+def uninformative_imbalanced_data(
+    n_positive: int = 12,
+    n_negative: int = 8,
+) -> tuple[np.ndarray, list[int]]:
+    """Build an uneven split whose features carry no class signal at all.
+
+    Both classes cycle through the same four feature vectors, so every value
+    that appears in one class also appears in the other and nothing separates
+    them. Under raw accuracy a probe can still reach ``n_positive / n_total``
+    by answering "positive" every time; under balanced accuracy it cannot do
+    better than 0.5. That gap is exactly what these tests are about.
+
+    Args:
+        n_positive: Samples in the larger class.
+        n_negative: Samples in the smaller class.
+
+    Returns:
+        A ``(features, labels)`` pair.
+    """
+    block = np.array([[0.0, 1.0], [1.0, 0.0], [0.5, 0.5], [0.25, 0.75]])
+    rows = [block[index % len(block)] for index in range(n_positive + n_negative)]
+    features = np.vstack(rows)
+    labels = [1] * n_positive + [0] * n_negative
+    return features, labels
+
+
+class TestBalancedMetric:
+    """The reported number must not be reachable by guessing the larger class."""
+
+    def test_uninformative_imbalanced_data_scores_at_one_half(self) -> None:
+        """Raw accuracy would report 0.6 here for a probe that learned nothing."""
+        features, labels = uninformative_imbalanced_data()
+        probe = LinearProbe(seed=0)
+
+        accuracy, _, _ = probe.cross_val_accuracy(features, labels)
+
+        assert accuracy == pytest.approx(0.5, abs=0.2)
+        assert accuracy < chance_accuracy(labels)
+
+    def test_separable_data_still_scores_perfectly(self) -> None:
+        """The fix must not cost anything where there is real signal."""
+        features, labels = separable_data()
+        accuracy, _, _ = LinearProbe(seed=0).cross_val_accuracy(features, labels)
+        assert accuracy == pytest.approx(1.0)
+
+    def test_an_unweighted_probe_would_have_taken_the_shortcut(self) -> None:
+        """Shows the behaviour the fix removes, so the fix cannot be undone quietly.
+
+        An unweighted logistic regression on this data learns to answer with the
+        larger class, which raw accuracy rewards with the class ratio. Both
+        halves of the fix matter: the weighting stops the classifier taking the
+        shortcut, and the metric stops it paying.
+        """
+        features, labels = uninformative_imbalanced_data()
+        unweighted = Pipeline(
+            [("scale", StandardScaler()), ("classify", LogisticRegression(random_state=0))]
+        ).fit(features, labels)
+
+        assert set(unweighted.predict(features).tolist()) == {1}
+        assert unweighted.score(features, labels) == pytest.approx(chance_accuracy(labels))
+
+        weighted, _, _ = LinearProbe(seed=0).cross_val_accuracy(features, labels)
+        assert weighted < chance_accuracy(labels)
+
+    def test_score_is_balanced_too(self) -> None:
+        """A training score under a different metric would not be comparable."""
+        features, labels = uninformative_imbalanced_data()
+        probe = LinearProbe(seed=0).fit(features, labels)
+        assert probe.score(features, labels) == pytest.approx(0.5, abs=0.2)
+
+    def test_classifier_is_class_weighted(self) -> None:
+        """Scoring alone is not enough; the fit must not chase the larger class."""
+        probe = LinearProbe(seed=0).fit(*separable_data())
+        assert probe.pipeline is not None
+        assert probe.pipeline.named_steps["classify"].class_weight == "balanced"
+
+
+class TestProbeResultMetadata:
+    """A stored result must say which metric produced it."""
+
+    def test_chance_is_one_half_under_the_default_metric(self) -> None:
+        """Balanced accuracy has a 0.5 floor whatever the class ratio."""
+        engine = make_marker_engine()
+        positives, negatives = marked_prompts(6)
+
+        result = probe_layer(engine, 0, positives, negatives[:4])
+
+        assert result.chance == 0.5
+        assert result.metric == "balanced_accuracy"
+
+    def test_majority_class_rate_describes_the_design(self) -> None:
+        """The imbalance is still reported, as a description not a bar."""
+        engine = make_marker_engine()
+        positives, negatives = marked_prompts(6)
+
+        result = probe_layer(engine, 0, positives, negatives[:4])
+
+        assert result.majority_class_rate == pytest.approx(0.6)
+
+    def test_raw_accuracy_restores_the_majority_class_floor(self) -> None:
+        """Under raw accuracy the floor is the class ratio, and must say so."""
+        engine = make_marker_engine()
+        positives, negatives = marked_prompts(6)
+
+        result = probe_layer(engine, 0, positives, negatives[:4], scoring="accuracy")
+
+        assert result.chance == pytest.approx(0.6)
+        assert result.metric == "accuracy"
+
+    def test_lift_is_measured_against_the_matching_floor(self) -> None:
+        """Comparing a balanced score to a raw floor would understate every lift."""
+        engine = make_marker_engine()
+        positives, negatives = marked_prompts(6)
+
+        result = probe_layer(engine, next(iter(INFORMATIVE_LAYERS)), positives, negatives[:4])
+
+        assert result.lift_over_chance == pytest.approx(result.accuracy - 0.5)
+
+    def test_sweep_applies_one_metric_to_every_layer(self) -> None:
+        """A metric that varied by layer would make the sweep incomparable."""
+        engine = make_marker_engine()
+        results = sweep_layers_with_probe(engine, "wasta_001", scoring="accuracy")
+        assert {r.metric for r in results.values()} == {"accuracy"}
+        assert len(results) == MARKER_N_LAYERS

@@ -149,11 +149,18 @@ class TestLayerSweep:
         assert len(rows) == 2 * n_layers
         assert set(best) == {"wasta_001", "diyafa_001"}
 
-    def test_reports_dispersion_alongside_accuracy(self, engine: CulturalRepE) -> None:
-        """An accuracy without its spread invites over-reading a small sample."""
+    def test_reports_dispersion_alongside_the_score(self, engine: CulturalRepE) -> None:
+        """A score without its spread invites over-reading a small sample."""
         rows, _ = run_pilot.run_layer_sweep(engine, ["wasta_001"])
         assert all("probe_std" in row for row in rows)
-        assert all("chance_accuracy" in row for row in rows)
+        assert all("chance" in row for row in rows)
+
+    def test_records_the_metric_and_the_class_balance(self, engine: CulturalRepE) -> None:
+        """A stored score must say which rule produced it and how even the split was."""
+        rows, _ = run_pilot.run_layer_sweep(engine, ["wasta_001"])
+        assert {row["metric"] for row in rows} == {"balanced_accuracy"}
+        assert all(row["chance"] == 0.5 for row in rows)
+        assert all(row["majority_class_rate"] > 0.5 for row in rows)
 
     def test_best_layer_is_one_that_was_probed(self, engine: CulturalRepE) -> None:
         """The chosen layer has to appear in the rows backing it."""
@@ -210,6 +217,31 @@ class TestBaselines:
         assert payload["conditions"]
 
 
+class TestAlignmentPhase:
+    """The cross-lingual check, and the shared layer it needs."""
+
+    def test_uses_one_layer_for_every_concept(self, engine: CulturalRepE) -> None:
+        """Cosines from different depths are not comparable."""
+        rows = run_pilot.run_alignment(
+            engine, ["wasta_001", "diyafa_001"], {"wasta_001": 0, "diyafa_001": 2}
+        )
+        assert len({row["layer"] for row in rows}) == 1
+
+    def test_reports_the_control_next_to_the_headline(self, engine: CulturalRepE) -> None:
+        """An aligned cosine with no mismatched baseline cannot be read."""
+        rows = run_pilot.run_alignment(
+            engine, ["wasta_001", "diyafa_001"], {"wasta_001": 1, "diyafa_001": 1}
+        )
+        assert rows
+        for row in rows:
+            assert "mean_mismatched_cosine" in row
+            assert "separation" in row
+
+    def test_a_single_concept_produces_no_rows(self, engine: CulturalRepE) -> None:
+        """With nothing to compare against, a separation would be meaningless."""
+        assert run_pilot.run_alignment(engine, ["wasta_001"], {"wasta_001": 1}) == []
+
+
 class TestWriteReport:
     """The report is what a reader sees first, so it must not overstate."""
 
@@ -229,20 +261,24 @@ class TestWriteReport:
             {
                 "concept_id": "wasta_001",
                 "layer": 0,
-                "probe_accuracy": 0.5,
+                "metric": "balanced_accuracy",
+                "probe_score": 0.5,
                 "probe_std": 0.1,
-                "chance_accuracy": 0.5,
+                "chance": 0.5,
                 "lift_over_chance": 0.0,
-                "n_samples": 12,
+                "majority_class_rate": 0.6,
+                "n_samples": 20,
             },
             {
                 "concept_id": "wasta_001",
                 "layer": 1,
-                "probe_accuracy": 0.75,
+                "metric": "balanced_accuracy",
+                "probe_score": 0.75,
                 "probe_std": 0.2,
-                "chance_accuracy": 0.5,
+                "chance": 0.5,
                 "lift_over_chance": 0.25,
-                "n_samples": 12,
+                "majority_class_rate": 0.6,
+                "n_samples": 20,
             },
         ]
         steering_rows = [
@@ -408,7 +444,7 @@ class TestMain:
         )
         out = tmp_path / "run"
         layer_rows = _read_csv(out / "layer_sweep.csv")
-        best = max(layer_rows, key=lambda r: float(r["probe_accuracy"]))
+        best = max(layer_rows, key=lambda r: float(r["probe_score"]))
         steering_rows = _read_csv(out / "steering_sweep.csv")
         assert steering_rows[0]["layer"] == best["layer"]
 
@@ -433,6 +469,26 @@ class TestMain:
         assert len(rows) > 1
         assert "against prompting" in (out / "README.md").read_text(encoding="utf-8")
         assert (out / "generations" / "wasta_001.json").exists()
+
+    def test_writes_the_alignment_check(self, tmp_path: Path) -> None:
+        """The cross-lingual result is part of the run, not an optional extra."""
+        run_pilot.main(
+            [
+                "--model",
+                "dummy/pilot",
+                "--concepts",
+                "wasta_001,diyafa_001",
+                "--strengths",
+                "0.2",
+                "--output-dir",
+                str(tmp_path / "run"),
+                "--no-baselines",
+            ]
+        )
+        out = tmp_path / "run"
+        rows = _read_csv(out / "crosslingual_alignment.csv")
+        assert {row["concept_id"] for row in rows} == {"wasta_001", "diyafa_001"}
+        assert "same direction" in (out / "README.md").read_text(encoding="utf-8")
 
     def test_is_deterministic_for_a_fixed_seed(self, tmp_path: Path) -> None:
         """Two runs of the same command must produce the same numbers."""
@@ -460,3 +516,43 @@ class TestMain:
 def test_resid_hook_name_is_the_one_the_fake_answers() -> None:
     """Guards the fake against a rename of the hook the engine reads."""
     assert RESID_POST_HOOK.format(layer=0) == "blocks.0.hook_resid_post"
+
+
+class TestArtefactsSurviveTheCommitHooks:
+    """A committed artefact must be what the runner actually wrote.
+
+    The repository's end-of-file hook appends a trailing newline to files that
+    lack one. If the runner omitted it, committing an artefact would silently
+    change it, and a reproduction check would report a diff that no rerun could
+    ever close.
+    """
+
+    def test_every_written_file_ends_with_exactly_one_newline(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Covers the manifest, the report, the CSVs and the generations."""
+        engine = make_pilot_engine()
+        monkeypatch.setattr(engine, "load_model", lambda: engine.model)
+        monkeypatch.setattr(run_pilot, "CulturalRepE", lambda **_kwargs: engine)
+
+        run_pilot.main(
+            [
+                "--model",
+                "dummy/pilot",
+                "--concepts",
+                "wasta_001,diyafa_001",
+                "--strengths",
+                "0.2",
+                "--max-new-tokens",
+                "4",
+                "--output-dir",
+                str(tmp_path / "run"),
+            ]
+        )
+
+        written = [path for path in (tmp_path / "run").rglob("*") if path.is_file()]
+        assert written
+        for path in written:
+            content = path.read_bytes()
+            assert content.endswith(b"\n"), f"{path.name} has no trailing newline"
+            assert not content.endswith(b"\n\n"), f"{path.name} has a blank line at the end"
