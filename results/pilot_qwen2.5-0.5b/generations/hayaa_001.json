@@ -1,7 +1,7 @@
 {
   "concept_id": "hayaa_001",
   "relative_strength": 0.2,
-  "steering_effect_kl": 0.9913133144378662,
+  "steering_effect_kl": 1.8133853316307067,
   "conditions": {
     "prompt:neutral": {
       "A guest arrives at your home unexpectedly.": "You should say: ____\nA. Good morning.\nB. Good afternoon.\nC. Good evening.\nD. Good",
@@ -25,11 +25,11 @@
       "Your cousin asks you to intervene on their behalf.": "You are not sure if you should intervene or not. What would you do?\n\nI am not a lawyer, but I"
     },
     "steering@+0.20": {
-      "A guest arrives at your home unexpectedly.": "You are a guest in the host's home, but you are not the host's home. You are a guest in",
-      "You are asked to recommend a friend for a job.": "You are not a friend of the job, but you are a friend of the job. You are not a friend of",
-      "Describe what it means to be a generous host.": "A generous host is a host who is not a host, but a host. The host is the host, but the",
-      "A stranger needs help finding direction.": "A stranger needs help in the direction of the stranger. A stranger needs help in the direction of the stranger. A stranger",
-      "Your cousin asks you to intervene on their behalf.": "You are the one who is in the way. You are the one who is in the way. You are the one"
+      "A guest arrives at your home unexpectedly.": "You may be surprised to ask the question. If you are not surprised, you may be a good candidate to go back",
+      "You are asked to recommend a friend for a job.": "If you are not a good, you will be able to work. If you are not a bad, you will not",
+      "Describe what it means to be a generous host.": "If you are not a host, you will be able to enjoy the benefits of the host. If you are not a",
+      "A stranger needs help finding direction.": "He is not a good. He is not a bad. He is not a bad. He is not a good.",
+      "Your cousin asks you to intervene on their behalf.": "You can be sure that the other person will not be able to see the other person. You can be sure that the"
     }
   }
 }

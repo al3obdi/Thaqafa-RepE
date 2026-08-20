@@ -1,7 +1,7 @@
 {
   "concept_id": "silat_rahim_001",
   "relative_strength": 0.2,
-  "steering_effect_kl": 0.8660402357578277,
+  "steering_effect_kl": 1.2841284215450286,
   "conditions": {
     "prompt:neutral": {
       "A guest arrives at your home unexpectedly.": "You should say: ____\nA. Good morning.\nB. Good afternoon.\nC. Good evening.\nD. Good",
@@ -25,11 +25,11 @@
       "Your cousin asks you to intervene on their behalf.": "You are not sure if you should intervene or not. What would you do?\n\nI am a 17 year old"
     },
     "steering@+0.20": {
-      "A guest arrives at your home unexpectedly.": "The guest's arrival is a guest's arrival, but the guest's arrival is not the guest's arrival. The guest",
-      "You are asked to recommend a friend for a job.": "The friend's friend is a friend of the friend's friend, but the friend's friend is a friend of the friend",
-      "Describe what it means to be a generous host.": "A generous host is a host who is generous to the host's host, the host's host, and the host's",
-      "A stranger needs help finding direction.": "The stranger knows the stranger's direction, but the stranger knows the stranger's direction. The stranger knows the stranger knows the",
-      "Your cousin asks you to intervene on their behalf.": "The cousin is a cousin of the cousin. The cousin is a cousin of the cousin. The cousin is a cousin of"
+      "A guest arrives at your home unexpectedly.": "He is very excited. He is a very happy. He is a very happy. He is a very happy. He",
+      "You are asked to recommend a friend for a job.": "You have a deep respect for him. He is a good friend. He is a good friend. He is a good",
+      "Describe what it means to be a generous host.": "I am a host, I am a person who is a very much a person who is a very much a person.",
+      "A stranger needs help finding direction.": "He is a very old and he is a very good at mathematics. He knows that he is a very happy to find",
+      "Your cousin asks you to intervene on their behalf.": "You are a good friend. You are a good friend. You are a good friend. You are a good friend."
     }
   }
 }

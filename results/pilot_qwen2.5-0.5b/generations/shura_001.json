@@ -1,7 +1,7 @@
 {
   "concept_id": "shura_001",
   "relative_strength": 0.2,
-  "steering_effect_kl": 1.3298868894577027,
+  "steering_effect_kl": 1.1552008748054505,
   "conditions": {
     "prompt:neutral": {
       "A guest arrives at your home unexpectedly.": "You should say: ____\nA. Good morning.\nB. Good afternoon.\nC. Good evening.\nD. Good",
@@ -25,11 +25,11 @@
       "Your cousin asks you to intervene on their behalf.": "You are not sure if you should do so or not. You are not sure if you should do so or not."
     },
     "steering@+0.20": {
-      "A guest arrives at your home unexpectedly.": "You are a real estate agent. You are a real estate agent. You are a real estate agent. You are a",
-      "You are asked to recommend a friend for a job.": "You are a software developer. You are a software developer. You are a software developer. You are a software developer.",
-      "Describe what it means to be a generous host.": "A good host is a person who is a good host. A good host is a person who is a good host.",
-      "A stranger needs help finding direction.": "A friend in the United States, a friend in China. A friend in China, a friend in a friend. A",
-      "Your cousin asks you to intervene on their behalf.": "You have a good relationship with your family, and you have lived in the same city for a long time, and you"
+      "A guest arrives at your home unexpectedly.": "A guest is a guest. A guest is a guest. A guest is a guest. A guest is a guest.",
+      "You are asked to recommend a friend for a job.": "You are a person who is a good person. You are a person who is a good person. You are a person",
+      "Describe what it means to be a generous host.": "A good host is a good host. A good host is a good host. A good host is a good host.",
+      "A stranger needs help finding direction.": "A stranger needs help. A stranger needs help. A stranger needs help. A stranger needs help. A stranger needs help",
+      "Your cousin asks you to intervene on their behalf.": "You have a good reason to intervene. You have a good reason to intervene. You have a good reason to intervene."
     }
   }
 }

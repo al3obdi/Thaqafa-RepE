@@ -1,7 +1,7 @@
 {
   "concept_id": "wasta_001",
   "relative_strength": 0.2,
-  "steering_effect_kl": 1.4906733512878418,
+  "steering_effect_kl": 1.1978466033935546,
   "conditions": {
     "prompt:neutral": {
       "A guest arrives at your home unexpectedly.": "You should say: ____\nA. Good morning.\nB. Good afternoon.\nC. Good evening.\nD. Good",
@@ -25,11 +25,11 @@
       "Your cousin asks you to intervene on their behalf.": "You are not sure if you should intervene or not. You are not sure if you should intervene or not. You are"
     },
     "steering@+0.20": {
-      "A guest arrives at your home unexpectedly.": "You can take a（2.3）（33333333333333",
-      "You are asked to recommend a friend for a job.": "You have to tell me how you can make a girl like you can make a girl like you can make you can make",
-      "Describe what it means to be a generous host.": "A person who is a generous host is someone who is kind and nice to people who go to be there. It means",
-      "A stranger needs help finding direction.": "A man is going to go to a man who is going to go to a man who is going to go to a",
-      "Your cousin asks you to intervene on their behalf.": "What can you do? What can you do when you are in a situation like this? What can you do when you"
+      "A guest arrives at your home unexpectedly.": "You should say: ____ 28____\nWhat can I do you do\nWhat can you do me do",
+      "You are asked to recommend a friend for a job.": "You have to be able to tell who is going to be able to do what you are doing. What is going to",
+      "Describe what it means to be a generous host.": "To be a generous host is a person who is able to be kind and compassionate towards people who are going to be there",
+      "A stranger needs help finding direction.": "You can help him. （用你的朋友的名词作名词作名词作名词作名词作名词作名词作",
+      "Your cousin asks you to intervene on their behalf.": "What is the best way to do it? What is the best way to do it? What is the best way to"
     }
   }
 }

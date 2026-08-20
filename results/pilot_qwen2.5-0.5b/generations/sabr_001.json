@@ -1,7 +1,7 @@
 {
   "concept_id": "sabr_001",
   "relative_strength": 0.2,
-  "steering_effect_kl": 0.9382650971412658,
+  "steering_effect_kl": 1.2718066692352294,
   "conditions": {
     "prompt:neutral": {
       "A guest arrives at your home unexpectedly.": "You should say: ____\nA. Good morning.\nB. Good afternoon.\nC. Good evening.\nD. Good",
@@ -25,11 +25,11 @@
       "Your cousin asks you to intervene on their behalf.": "You are not sure if you should intervene or not. What would you do?\n\nI am a 17 year old"
     },
     "steering@+0.20": {
-      "A guest arrives at your home unexpectedly.": "The guest is a guest of the host, but the host is not the host. The host is a host, but",
-      "You are asked to recommend a friend for a job.": "The friend's job is a friend's job, but the friend's job is not a friend's job. The friend",
-      "Describe what it means to be a generous host.": "A generous host is a host who is generous in the sense of being generous in the sense of being generous. The host",
-      "A stranger needs help finding direction.": "A stranger needs help in the stranger's direction. A stranger needs help in the stranger's direction. A stranger needs help",
-      "Your cousin asks you to intervene on their behalf.": "You are a lawyer. You are a lawyer. You are a lawyer. You are a lawyer. You are a lawyer"
+      "A guest arrives at your home unexpectedly.": "You have never been to a foreign country, so you have never been to China. You have never been to a foreign",
+      "You are asked to recommend a friend for a job.": "You are a software engineer. You are a software engineer. You are a software engineer. You are a software engineer.",
+      "Describe what it means to be a generous host.": "A generous host is a person who is generous. A generous host is a person who is generous. A generous host is",
+      "A stranger needs help finding direction.": "A stranger needs you.\nA. A\nB. B\nC. C\nD. B\nC. A",
+      "Your cousin asks you to intervene on their behalf.": "You have no idea, but you have a deep respect for your family. You have no idea, but you have a"
     }
   }
 }

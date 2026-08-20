@@ -1,8 +1,8 @@
 # Pilot results: `Qwen/Qwen2.5-0.5B`
 
 - **Model**: `Qwen/Qwen2.5-0.5B` on cpu (float32)
-- **Commit**: `f5bc90a2a521`
-- **Run (UTC)**: 2026-08-20T05:57:09+00:00
+- **Commit**: `d13b40b88668`
+- **Run (UTC)**: 2026-08-20T13:12:38+00:00
 - **Seed**: 42
 - **Dataset SHA-256**: `52a52e5705f38566...`
 
@@ -39,18 +39,18 @@ every layer, so the selection can be redone.
 
 | Concept | Best layer | Balanced acc. | Chance | Lift | p | Majority |
 |---|---|---|---|---|---|---|
-| `wasta_001` | 14 | 0.817 +/- 0.097 | 0.500 | +0.317 | 0.040 | 0.600 |
-| `muruah_001` | 6 | 1.000 +/- 0.000 | 0.500 | +0.500 | <0.005 | 0.600 |
-| `diyafa_001` | 5 | 1.000 +/- 0.000 | 0.500 | +0.500 | <0.005 | 0.600 |
-| `karam_001` | 6 | 1.000 +/- 0.000 | 0.500 | +0.500 | <0.005 | 0.600 |
-| `sharaf_001` | 8 | 1.000 +/- 0.000 | 0.500 | +0.500 | <0.005 | 0.600 |
-| `sabr_001` | 14 | 1.000 +/- 0.000 | 0.500 | +0.500 | <0.005 | 0.600 |
-| `silat_rahim_001` | 14 | 0.867 +/- 0.194 | 0.500 | +0.367 | 0.015 | 0.600 |
-| `jiwar_001` | 9 | 0.950 +/- 0.100 | 0.500 | +0.450 | <0.005 | 0.600 |
-| `shura_001` | 8 | 1.000 +/- 0.000 | 0.500 | +0.500 | <0.005 | 0.600 |
-| `majlis_001` | 3 | 0.783 +/- 0.194 | 0.500 | +0.283 | 0.060 | 0.600 |
+| `wasta_001` | 16 | 0.683 +/- 0.153 | 0.500 | +0.183 | 0.154 | 0.600 |
+| `muruah_001` | 10 | 1.000 +/- 0.000 | 0.500 | +0.500 | <0.005 | 0.600 |
+| `diyafa_001` | 4 | 0.867 +/- 0.194 | 0.500 | +0.367 | <0.005 | 0.600 |
+| `karam_001` | 10 | 0.800 +/- 0.292 | 0.500 | +0.300 | 0.030 | 0.600 |
+| `sharaf_001` | 20 | 1.000 +/- 0.000 | 0.500 | +0.500 | <0.005 | 0.600 |
+| `sabr_001` | 8 | 1.000 +/- 0.000 | 0.500 | +0.500 | <0.005 | 0.600 |
+| `silat_rahim_001` | 6 | 0.783 +/- 0.194 | 0.500 | +0.283 | 0.030 | 0.600 |
+| `jiwar_001` | 8 | 0.750 +/- 0.224 | 0.500 | +0.250 | 0.040 | 0.600 |
+| `shura_001` | 10 | 0.900 +/- 0.200 | 0.500 | +0.400 | 0.010 | 0.600 |
+| `majlis_001` | 22 | 0.867 +/- 0.113 | 0.500 | +0.367 | 0.010 | 0.600 |
 | `fazaa_001` | 8 | 1.000 +/- 0.000 | 0.500 | +0.500 | <0.005 | 0.600 |
-| `hayaa_001` | 12 | 1.000 +/- 0.000 | 0.500 | +0.500 | <0.005 | 0.600 |
+| `hayaa_001` | 4 | 0.950 +/- 0.100 | 0.500 | +0.450 | <0.005 | 0.600 |
 
 ## 2. Steering: effect against cost
 
@@ -63,66 +63,66 @@ fluency.
 
 | Concept | Strength | Layer | Effect (KL) | Loss |
 |---|---|---|---|---|
-| `wasta_001` | -0.40 | 14 | 4.9820 | 8.8911 |
-| `wasta_001` | -0.20 | 14 | 1.3006 | 6.1092 |
-| `wasta_001` | +0.00 | 14 | 0.0000 | 4.1370 |
-| `wasta_001` | +0.20 | 14 | 1.4907 | 5.2175 |
-| `wasta_001` | +0.40 | 14 | 8.1747 | 11.3444 |
-| `muruah_001` | -0.40 | 6 | 9.7874 | 9.5147 |
-| `muruah_001` | -0.20 | 6 | 6.5798 | 8.1390 |
-| `muruah_001` | +0.00 | 6 | 0.0000 | 4.1370 |
-| `muruah_001` | +0.20 | 6 | 1.1143 | 4.4143 |
-| `muruah_001` | +0.40 | 6 | 1.8875 | 6.6170 |
-| `diyafa_001` | -0.40 | 5 | 6.0697 | 8.4204 |
-| `diyafa_001` | -0.20 | 5 | 1.5033 | 4.8396 |
-| `diyafa_001` | +0.00 | 5 | 0.0000 | 4.1370 |
-| `diyafa_001` | +0.20 | 5 | 7.9725 | 9.3106 |
-| `diyafa_001` | +0.40 | 5 | 9.3283 | 10.4123 |
-| `karam_001` | -0.40 | 6 | 10.5795 | 9.5982 |
-| `karam_001` | -0.20 | 6 | 6.5289 | 8.1813 |
-| `karam_001` | +0.00 | 6 | 0.0000 | 4.1370 |
-| `karam_001` | +0.20 | 6 | 1.1804 | 4.3812 |
-| `karam_001` | +0.40 | 6 | 1.9623 | 6.5871 |
-| `sharaf_001` | -0.40 | 8 | 9.7568 | 9.5619 |
-| `sharaf_001` | -0.20 | 8 | 5.3480 | 7.7512 |
-| `sharaf_001` | +0.00 | 8 | 0.0000 | 4.1370 |
-| `sharaf_001` | +0.20 | 8 | 1.2416 | 4.8251 |
-| `sharaf_001` | +0.40 | 8 | 4.4201 | 7.2651 |
-| `sabr_001` | -0.40 | 14 | 11.3722 | 10.8160 |
-| `sabr_001` | -0.20 | 14 | 1.2348 | 5.3496 |
-| `sabr_001` | +0.00 | 14 | 0.0000 | 4.1370 |
-| `sabr_001` | +0.20 | 14 | 0.9383 | 4.8109 |
-| `sabr_001` | +0.40 | 14 | 3.1474 | 9.0992 |
-| `silat_rahim_001` | -0.40 | 14 | 10.8837 | 10.0251 |
-| `silat_rahim_001` | -0.20 | 14 | 1.2620 | 5.2574 |
-| `silat_rahim_001` | +0.00 | 14 | 0.0000 | 4.1370 |
-| `silat_rahim_001` | +0.20 | 14 | 0.8660 | 4.8509 |
-| `silat_rahim_001` | +0.40 | 14 | 2.9273 | 8.8808 |
-| `jiwar_001` | -0.40 | 9 | 10.2269 | 9.8661 |
-| `jiwar_001` | -0.20 | 9 | 3.3502 | 7.6776 |
-| `jiwar_001` | +0.00 | 9 | 0.0000 | 4.1370 |
-| `jiwar_001` | +0.20 | 9 | 1.1610 | 4.4833 |
-| `jiwar_001` | +0.40 | 9 | 4.4574 | 7.7736 |
-| `shura_001` | -0.40 | 8 | 9.9971 | 8.7393 |
-| `shura_001` | -0.20 | 8 | 4.7889 | 7.4212 |
-| `shura_001` | +0.00 | 8 | 0.0000 | 4.1370 |
-| `shura_001` | +0.20 | 8 | 1.3299 | 4.7982 |
-| `shura_001` | +0.40 | 8 | 3.3885 | 7.4591 |
-| `majlis_001` | -0.40 | 3 | 10.5111 | 11.9416 |
-| `majlis_001` | -0.20 | 3 | 10.9921 | 10.3139 |
-| `majlis_001` | +0.00 | 3 | 0.0000 | 4.1370 |
-| `majlis_001` | +0.20 | 3 | 2.6094 | 5.1976 |
-| `majlis_001` | +0.40 | 3 | 7.4865 | 6.9080 |
+| `wasta_001` | -0.40 | 16 | 3.9638 | 9.6078 |
+| `wasta_001` | -0.20 | 16 | 1.1778 | 6.0806 |
+| `wasta_001` | +0.00 | 16 | 0.0000 | 4.1370 |
+| `wasta_001` | +0.20 | 16 | 1.1978 | 4.8928 |
+| `wasta_001` | +0.40 | 16 | 11.8060 | 13.0333 |
+| `muruah_001` | -0.40 | 10 | 11.5967 | 9.7946 |
+| `muruah_001` | -0.20 | 10 | 3.0628 | 6.4388 |
+| `muruah_001` | +0.00 | 10 | 0.0000 | 4.1370 |
+| `muruah_001` | +0.20 | 10 | 1.0681 | 4.6755 |
+| `muruah_001` | +0.40 | 10 | 4.4538 | 8.4596 |
+| `diyafa_001` | -0.40 | 4 | 8.9983 | 8.9199 |
+| `diyafa_001` | -0.20 | 4 | 1.5873 | 5.2662 |
+| `diyafa_001` | +0.00 | 4 | 0.0000 | 4.1370 |
+| `diyafa_001` | +0.20 | 4 | 9.5973 | 10.0084 |
+| `diyafa_001` | +0.40 | 4 | 9.6982 | 11.6843 |
+| `karam_001` | -0.40 | 10 | 11.6898 | 9.7517 |
+| `karam_001` | -0.20 | 10 | 3.1685 | 6.5366 |
+| `karam_001` | +0.00 | 10 | 0.0000 | 4.1370 |
+| `karam_001` | +0.20 | 10 | 1.1020 | 4.5506 |
+| `karam_001` | +0.40 | 10 | 4.3192 | 7.9807 |
+| `sharaf_001` | -0.40 | 20 | 13.1425 | 13.9851 |
+| `sharaf_001` | -0.20 | 20 | 6.3272 | 7.9832 |
+| `sharaf_001` | +0.00 | 20 | 0.0000 | 4.1370 |
+| `sharaf_001` | +0.20 | 20 | 2.7206 | 6.3729 |
+| `sharaf_001` | +0.40 | 20 | 8.7004 | 10.6164 |
+| `sabr_001` | -0.40 | 8 | 9.5669 | 9.5895 |
+| `sabr_001` | -0.20 | 8 | 5.0466 | 7.5329 |
+| `sabr_001` | +0.00 | 8 | 0.0000 | 4.1370 |
+| `sabr_001` | +0.20 | 8 | 1.2718 | 4.7841 |
+| `sabr_001` | +0.40 | 8 | 4.7915 | 7.3909 |
+| `silat_rahim_001` | -0.40 | 6 | 10.3240 | 9.5102 |
+| `silat_rahim_001` | -0.20 | 6 | 6.5281 | 7.8665 |
+| `silat_rahim_001` | +0.00 | 6 | 0.0000 | 4.1370 |
+| `silat_rahim_001` | +0.20 | 6 | 1.2841 | 4.4258 |
+| `silat_rahim_001` | +0.40 | 6 | 1.9577 | 6.6653 |
+| `jiwar_001` | -0.40 | 8 | 10.2698 | 9.6031 |
+| `jiwar_001` | -0.20 | 8 | 4.9426 | 8.7546 |
+| `jiwar_001` | +0.00 | 8 | 0.0000 | 4.1370 |
+| `jiwar_001` | +0.20 | 8 | 1.3146 | 4.7724 |
+| `jiwar_001` | +0.40 | 8 | 4.5775 | 7.9013 |
+| `shura_001` | -0.40 | 10 | 11.3339 | 9.2997 |
+| `shura_001` | -0.20 | 10 | 3.5430 | 6.8535 |
+| `shura_001` | +0.00 | 10 | 0.0000 | 4.1370 |
+| `shura_001` | +0.20 | 10 | 1.1552 | 4.6416 |
+| `shura_001` | +0.40 | 10 | 5.3714 | 8.9048 |
+| `majlis_001` | -0.40 | 22 | 0.3574 | 4.9203 |
+| `majlis_001` | -0.20 | 22 | 0.0796 | 4.4325 |
+| `majlis_001` | +0.00 | 22 | 0.0000 | 4.1370 |
+| `majlis_001` | +0.20 | 22 | 0.0880 | 4.0320 |
+| `majlis_001` | +0.40 | 22 | 0.4265 | 4.1247 |
 | `fazaa_001` | -0.40 | 8 | 9.8984 | 8.9153 |
 | `fazaa_001` | -0.20 | 8 | 5.1127 | 7.6281 |
 | `fazaa_001` | +0.00 | 8 | 0.0000 | 4.1370 |
 | `fazaa_001` | +0.20 | 8 | 1.2422 | 4.8232 |
 | `fazaa_001` | +0.40 | 8 | 4.5400 | 7.3558 |
-| `hayaa_001` | -0.40 | 12 | 11.3104 | 9.9393 |
-| `hayaa_001` | -0.20 | 12 | 2.2629 | 6.0198 |
-| `hayaa_001` | +0.00 | 12 | 0.0000 | 4.1370 |
-| `hayaa_001` | +0.20 | 12 | 0.9913 | 4.7074 |
-| `hayaa_001` | +0.40 | 12 | 4.1358 | 8.8534 |
+| `hayaa_001` | -0.40 | 4 | 10.1551 | 11.8453 |
+| `hayaa_001` | -0.20 | 4 | 10.4660 | 10.6372 |
+| `hayaa_001` | +0.00 | 4 | 0.0000 | 4.1370 |
+| `hayaa_001` | +0.20 | 4 | 1.8134 | 4.8936 |
+| `hayaa_001` | +0.40 | 4 | 7.3060 | 6.7860 |
 
 ## 3. Steering against prompting
 
@@ -139,43 +139,43 @@ repetition and are not yet worth putting in front of raters.
 | `wasta_001` | prompt:neutral | 1.9006 | 0 |
 | `wasta_001` | prompt:direct_en | 1.8997 | 8 |
 | `wasta_001` | prompt:persona_en | 2.1752 | 18 |
-| `wasta_001` | steering@+0.20 | 2.4225 | 0 |
+| `wasta_001` | steering@+0.20 | 2.4699 | 0 |
 | `muruah_001` | prompt:neutral | 1.9006 | 0 |
 | `muruah_001` | prompt:direct_en | 1.7537 | 8 |
 | `muruah_001` | prompt:persona_en | 2.2384 | 18 |
-| `muruah_001` | steering@+0.20 | 1.7248 | 0 |
+| `muruah_001` | steering@+0.20 | 2.1009 | 0 |
 | `diyafa_001` | prompt:neutral | 1.9006 | 0 |
 | `diyafa_001` | prompt:direct_en | 2.0455 | 9 |
 | `diyafa_001` | prompt:persona_en | 2.1245 | 19 |
-| `diyafa_001` | steering@+0.20 | 2.4708 | 0 |
+| `diyafa_001` | steering@+0.20 | 5.5729 | 0 |
 | `karam_001` | prompt:neutral | 1.9006 | 0 |
 | `karam_001` | prompt:direct_en | 2.0504 | 8 |
 | `karam_001` | prompt:persona_en | 1.9186 | 18 |
-| `karam_001` | steering@+0.20 | 2.0144 | 0 |
+| `karam_001` | steering@+0.20 | 1.8243 | 0 |
 | `sharaf_001` | prompt:neutral | 1.9006 | 0 |
 | `sharaf_001` | prompt:direct_en | 2.2255 | 8 |
 | `sharaf_001` | prompt:persona_en | 2.1974 | 18 |
-| `sharaf_001` | steering@+0.20 | 2.1249 | 0 |
+| `sharaf_001` | steering@+0.20 | 1.3329 | 0 |
 | `sabr_001` | prompt:neutral | 1.9006 | 0 |
 | `sabr_001` | prompt:direct_en | 2.1150 | 9 |
 | `sabr_001` | prompt:persona_en | 2.1411 | 19 |
-| `sabr_001` | steering@+0.20 | 2.1628 | 0 |
+| `sabr_001` | steering@+0.20 | 2.0990 | 0 |
 | `silat_rahim_001` | prompt:neutral | 1.9006 | 0 |
 | `silat_rahim_001` | prompt:direct_en | 2.2116 | 10 |
 | `silat_rahim_001` | prompt:persona_en | 3.0209 | 20 |
-| `silat_rahim_001` | steering@+0.20 | 2.3366 | 0 |
+| `silat_rahim_001` | steering@+0.20 | 2.3125 | 0 |
 | `jiwar_001` | prompt:neutral | 1.9006 | 0 |
 | `jiwar_001` | prompt:direct_en | 2.1883 | 9 |
 | `jiwar_001` | prompt:persona_en | 2.2321 | 19 |
-| `jiwar_001` | steering@+0.20 | 1.8032 | 0 |
+| `jiwar_001` | steering@+0.20 | 1.9384 | 0 |
 | `shura_001` | prompt:neutral | 1.9006 | 0 |
 | `shura_001` | prompt:direct_en | 1.7885 | 8 |
 | `shura_001` | prompt:persona_en | 2.1537 | 18 |
-| `shura_001` | steering@+0.20 | 1.7545 | 0 |
+| `shura_001` | steering@+0.20 | 1.5831 | 0 |
 | `majlis_001` | prompt:neutral | 1.9006 | 0 |
 | `majlis_001` | prompt:direct_en | 1.8438 | 9 |
 | `majlis_001` | prompt:persona_en | 2.3030 | 19 |
-| `majlis_001` | steering@+0.20 | 2.2581 | 0 |
+| `majlis_001` | steering@+0.20 | 1.7562 | 0 |
 | `fazaa_001` | prompt:neutral | 1.9006 | 0 |
 | `fazaa_001` | prompt:direct_en | 2.1693 | 10 |
 | `fazaa_001` | prompt:persona_en | 2.4208 | 20 |
@@ -183,7 +183,7 @@ repetition and are not yet worth putting in front of raters.
 | `hayaa_001` | prompt:neutral | 1.9006 | 0 |
 | `hayaa_001` | prompt:direct_en | 2.0941 | 10 |
 | `hayaa_001` | prompt:persona_en | 2.3554 | 20 |
-| `hayaa_001` | steering@+0.20 | 2.5934 | 0 |
+| `hayaa_001` | steering@+0.20 | 2.3058 | 0 |
 
 ## 4. Do the Arabic and English exemplars find the same direction?
 
@@ -196,23 +196,91 @@ against the *other* concepts' English directions, and
 
 | Concept | Layer | Aligned | Mismatched | Separation |
 |---|---|---|---|---|
-| `diyafa_001` | 8 | +0.513 | -0.379 | +0.892 |
-| `muruah_001` | 8 | +0.995 | +0.807 | +0.188 |
-| `karam_001` | 8 | +0.996 | +0.808 | +0.188 |
-| `sharaf_001` | 8 | +0.988 | +0.803 | +0.186 |
-| `fazaa_001` | 8 | +0.993 | +0.807 | +0.186 |
-| `majlis_001` | 8 | +0.988 | +0.803 | +0.185 |
-| `hayaa_001` | 8 | +0.990 | +0.807 | +0.184 |
-| `jiwar_001` | 8 | +0.961 | +0.779 | +0.182 |
-| `sabr_001` | 8 | +0.989 | +0.808 | +0.182 |
-| `silat_rahim_001` | 8 | +0.945 | +0.772 | +0.173 |
-| `shura_001` | 8 | +0.965 | +0.797 | +0.168 |
-| `wasta_001` | 8 | -0.900 | -0.807 | -0.093 |
+| `diyafa_001` | 10 | +0.508 | -0.361 | +0.869 |
+| `muruah_001` | 10 | +0.994 | +0.805 | +0.189 |
+| `karam_001` | 10 | +0.995 | +0.807 | +0.189 |
+| `sharaf_001` | 10 | +0.987 | +0.800 | +0.187 |
+| `fazaa_001` | 10 | +0.991 | +0.805 | +0.186 |
+| `majlis_001` | 10 | +0.987 | +0.801 | +0.186 |
+| `hayaa_001` | 10 | +0.989 | +0.805 | +0.184 |
+| `sabr_001` | 10 | +0.988 | +0.807 | +0.182 |
+| `jiwar_001` | 10 | +0.956 | +0.775 | +0.180 |
+| `silat_rahim_001` | 10 | +0.944 | +0.771 | +0.173 |
+| `shura_001` | 10 | +0.965 | +0.795 | +0.170 |
+| `wasta_001` | 10 | -0.888 | -0.804 | -0.083 |
+
+## 5. Does steering write what the probe reads?
+
+The direction is injected one block below the layer where the
+sweep found the concept most readable, and that layer's probe
+is then run on neutral prompts - the same prompts the concept
+was contrasted against. `steered` is the share it calls
+positive; `random` is the same share under matched-norm random
+directions injected at the same layer.
+
+`Probe` is the reading probe's own cross-validated balanced
+accuracy. **A lift measured through a probe near 0.5 should be
+discarded, not explained**: a probe at chance still has a
+decision boundary, and pushing activations across an arbitrary
+hyperplane produces a lift that means nothing.
+
+**`lift` is the only column that carries information.** KL
+divergence and fluency loss are magnitudes that any large
+perturbation produces, and so is a rise in the probe's
+positive rate. What a random direction cannot produce is a
+rise the *concept's own* probe recognises beyond it.
+
+Rates saturate at high strength: push hard enough and every
+prompt reads positive under any direction, which shows up as
+the lift shrinking back toward zero. Every strength is
+reported rather than one being chosen.
+
+| Concept | Inject | Read | Probe | Strength | Base | Steered | Random | Lift |
+|---|---|---|---|---|---|---|---|---|
+| `wasta_001` | 15 | 16 | 0.68 | 0.40 | 0.67 | 1.00 | 0.44 | +0.56 |
+| `wasta_001` | 15 | 16 | 0.68 | 0.20 | 0.67 | 1.00 | 0.50 | +0.50 |
+| `wasta_001` | 15 | 16 | 0.68 | 0.10 | 0.67 | 1.00 | 0.57 | +0.43 |
+| `muruah_001` | 9 | 10 | 1.00 | 0.40 | 0.25 | 1.00 | 0.33 | +0.67 |
+| `muruah_001` | 9 | 10 | 1.00 | 0.20 | 0.25 | 0.92 | 0.32 | +0.60 |
+| `muruah_001` | 9 | 10 | 1.00 | 0.10 | 0.25 | 0.62 | 0.25 | +0.38 |
+| `diyafa_001` | 3 | 4 | 0.87 | 0.20 | 0.62 | 1.00 | 0.33 | +0.67 |
+| `diyafa_001` | 3 | 4 | 0.87 | 0.40 | 0.62 | 1.00 | 0.33 | +0.67 |
+| `diyafa_001` | 3 | 4 | 0.87 | 0.10 | 0.62 | 1.00 | 0.38 | +0.62 |
+| `karam_001` | 9 | 10 | 0.80 | 0.40 | 0.17 | 0.92 | 0.33 | +0.58 |
+| `karam_001` | 9 | 10 | 0.80 | 0.20 | 0.17 | 0.75 | 0.36 | +0.39 |
+| `karam_001` | 9 | 10 | 0.80 | 0.10 | 0.17 | 0.50 | 0.32 | +0.18 |
+| `sharaf_001` | 19 | 20 | 1.00 | 0.40 | 0.50 | 1.00 | 0.42 | +0.58 |
+| `sharaf_001` | 19 | 20 | 1.00 | 0.10 | 0.50 | 1.00 | 0.47 | +0.53 |
+| `sharaf_001` | 19 | 20 | 1.00 | 0.20 | 0.50 | 1.00 | 0.50 | +0.50 |
+| `sabr_001` | 7 | 8 | 1.00 | 0.20 | 0.38 | 1.00 | 0.40 | +0.60 |
+| `sabr_001` | 7 | 8 | 1.00 | 0.10 | 0.38 | 0.88 | 0.36 | +0.51 |
+| `sabr_001` | 7 | 8 | 1.00 | 0.40 | 0.38 | 1.00 | 0.49 | +0.51 |
+| `silat_rahim_001` | 5 | 6 | 0.78 | 0.40 | 0.25 | 1.00 | 0.14 | +0.86 |
+| `silat_rahim_001` | 5 | 6 | 0.78 | 0.20 | 0.25 | 1.00 | 0.17 | +0.83 |
+| `silat_rahim_001` | 5 | 6 | 0.78 | 0.10 | 0.25 | 0.83 | 0.22 | +0.61 |
+| `jiwar_001` | 7 | 8 | 0.75 | 0.20 | 0.33 | 1.00 | 0.61 | +0.39 |
+| `jiwar_001` | 7 | 8 | 0.75 | 0.40 | 0.33 | 1.00 | 0.65 | +0.35 |
+| `jiwar_001` | 7 | 8 | 0.75 | 0.10 | 0.33 | 0.88 | 0.54 | +0.33 |
+| `shura_001` | 9 | 10 | 0.90 | 0.20 | 0.62 | 1.00 | 0.32 | +0.68 |
+| `shura_001` | 9 | 10 | 0.90 | 0.40 | 0.62 | 1.00 | 0.33 | +0.67 |
+| `shura_001` | 9 | 10 | 0.90 | 0.10 | 0.62 | 1.00 | 0.47 | +0.53 |
+| `majlis_001` | 21 | 22 | 0.87 | 0.20 | 0.46 | 1.00 | 0.47 | +0.53 |
+| `majlis_001` | 21 | 22 | 0.87 | 0.40 | 0.46 | 1.00 | 0.47 | +0.53 |
+| `majlis_001` | 21 | 22 | 0.87 | 0.10 | 0.46 | 1.00 | 0.50 | +0.50 |
+| `fazaa_001` | 7 | 8 | 1.00 | 0.20 | 0.21 | 0.96 | 0.78 | +0.18 |
+| `fazaa_001` | 7 | 8 | 1.00 | 0.10 | 0.21 | 0.54 | 0.49 | +0.06 |
+| `fazaa_001` | 7 | 8 | 1.00 | 0.40 | 0.21 | 1.00 | 0.97 | +0.03 |
+| `hayaa_001` | 3 | 4 | 0.95 | 0.40 | 0.29 | 1.00 | 0.03 | +0.97 |
+| `hayaa_001` | 3 | 4 | 0.95 | 0.20 | 0.29 | 0.92 | 0.08 | +0.83 |
+| `hayaa_001` | 3 | 4 | 0.95 | 0.10 | 0.29 | 0.58 | 0.15 | +0.43 |
 
 ## Limitations
 
 - Small exemplar sets mean wide confidence intervals; no claim here
-  is statistically established.
+  is statistically established. Concretely: two random seeds have
+  produced balanced accuracies 0.25 apart for the same concept at
+  the same layer. The seed is in `manifest.json`, and a rerun under
+  a different one will not reproduce these numbers exactly.
 - The reported layer was selected on the same data as the p-value
   beside it, and nothing corrects for having probed every layer of
   every concept. A confirmatory result would need the layer fixed
@@ -220,6 +288,12 @@ against the *other* concepts' English directions, and
 - A small p-value says the labelling is unlikely to be unrelated to
   the activations. It does not say the probe found the concept
   rather than a word the exemplars happen to share.
+- The read-back shows a written direction reaching the probe that
+  reads it, across one transformer block. Both sides come from the
+  same twelve exemplars, so it is a consistency check on the
+  method, not evidence that the direction is the cultural concept
+  a person would name, and not evidence that it survives the whole
+  stack.
 - Most of the concept entries are still awaiting native-speaker
   review (`review_status` in the dataset).
 - A model with little Arabic capability can only validate that the

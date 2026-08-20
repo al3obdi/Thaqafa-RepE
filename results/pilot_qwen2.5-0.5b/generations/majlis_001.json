@@ -1,7 +1,7 @@
 {
   "concept_id": "majlis_001",
   "relative_strength": 0.2,
-  "steering_effect_kl": 2.6094220638275147,
+  "steering_effect_kl": 0.08795596361160278,
   "conditions": {
     "prompt:neutral": {
       "A guest arrives at your home unexpectedly.": "You should say: ____\nA. Good morning.\nB. Good afternoon.\nC. Good evening.\nD. Good",
@@ -25,11 +25,11 @@
       "Your cousin asks you to intervene on their behalf.": "You are not sure if you should intervene or not. What would you do?\n\nI am a Muslim and I am a"
     },
     "steering@+0.20": {
-      "A guest arrives at your home unexpectedly.": "The air is filled. The air is not filled. The air is not filled. The air is not filled. The",
-      "You are asked to recommend a friend for a job.": "If you want to stop, the engine will start to burn. The engine is a fire. The engine is a fire",
-      "Describe what it means to be a generous host.": "The energy of the wind is the maximum. The wind is the maximum. The wind is the minimum. The wind is",
-      "A stranger needs help finding direction.": "The wind is the only the wind is the only the the wind is the only the the wind is the only the the",
-      "Your cousin asks you to intervene on their behalf.": "The water is flowing and the water is not flowing. The water is not flowing. The water is not flowing. The"
+      "A guest arrives at your home unexpectedly.": "You should say: ____\nA. Excuse me, can I help you?\nB. Excuse me, can",
+      "You are asked to recommend a friend for a job.": "Your friend is a young man who is very talented and has a passion for music. He loves to play the guitar and",
+      "Describe what it means to be a generous host.": "Being a generous host is a noble and honorable trait that involves being willing to extend hospitality and generosity to others. It is",
+      "A stranger needs help finding direction.": "He knows he is in a city. He knows he is in a city. He knows he is in a city.",
+      "Your cousin asks you to intervene on their behalf.": "You are the manager of a company. You are the manager of a company. You are the manager of a company."
     }
   }
 }
