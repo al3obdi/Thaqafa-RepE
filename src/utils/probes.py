@@ -416,6 +416,10 @@ class LinearProbe:
             scoring=scoring,
             n_permutations=n_permutations,
             random_state=self.seed,
+            # The shufflings are independent, and there are hundreds of them
+            # per layer. Without this the permutation test dominates the
+            # runtime of a sweep on a machine that has cores going spare.
+            n_jobs=-1,
         )
         return float(p_value)
 
