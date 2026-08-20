@@ -1,8 +1,8 @@
 # Pilot results: `gpt2`
 
 - **Model**: `gpt2` on cpu (float32)
-- **Commit**: `796d792911da`
-- **Run (UTC)**: 2026-08-20T12:33:16+00:00
+- **Commit**: `d5492a2cf65c`
+- **Run (UTC)**: 2026-08-20T16:57:48+00:00
 - **Seed**: 42
 - **Dataset SHA-256**: `52a52e5705f38566...`
 
@@ -237,33 +237,111 @@ reported rather than one being chosen.
 
 | Concept | Inject | Read | Probe | Strength | Base | Steered | Random | Lift |
 |---|---|---|---|---|---|---|---|---|
-| `wasta_001` | 4 | 5 | 0.45 | 0.40 | 0.54 | 1.00 | 0.19 | +0.81 |
 | `wasta_001` | 4 | 5 | 0.45 | 0.20 | 0.54 | 1.00 | 0.42 | +0.58 |
 | `wasta_001` | 4 | 5 | 0.45 | 0.10 | 0.54 | 1.00 | 0.49 | +0.51 |
-| `diyafa_001` | 0 | 1 | 0.63 | 0.40 | 0.29 | 1.00 | 0.04 | +0.96 |
+| `wasta_001` | 4 | 5 | 0.45 | 0.02 | 0.54 | 1.00 | 0.54 | +0.46 |
+| `wasta_001` | 4 | 5 | 0.45 | 0.05 | 0.54 | 1.00 | 0.54 | +0.46 |
 | `diyafa_001` | 0 | 1 | 0.63 | 0.20 | 0.29 | 1.00 | 0.12 | +0.88 |
 | `diyafa_001` | 0 | 1 | 0.63 | 0.10 | 0.29 | 1.00 | 0.24 | +0.76 |
+| `diyafa_001` | 0 | 1 | 0.63 | 0.05 | 0.29 | 1.00 | 0.29 | +0.71 |
+| `diyafa_001` | 0 | 1 | 0.63 | 0.02 | 0.29 | 0.79 | 0.29 | +0.50 |
+| `sharaf_001` | 0 | 1 | 0.80 | 0.05 | 0.17 | 0.83 | 0.18 | +0.65 |
 | `sharaf_001` | 0 | 1 | 0.80 | 0.10 | 0.17 | 0.96 | 0.32 | +0.64 |
 | `sharaf_001` | 0 | 1 | 0.80 | 0.20 | 0.17 | 1.00 | 0.36 | +0.64 |
-| `sharaf_001` | 0 | 1 | 0.80 | 0.40 | 0.17 | 1.00 | 0.42 | +0.58 |
-| `sabr_001` | 10 | 11 | 0.68 | 0.40 | 0.54 | 1.00 | 0.26 | +0.74 |
+| `sharaf_001` | 0 | 1 | 0.80 | 0.02 | 0.17 | 0.46 | 0.18 | +0.28 |
 | `sabr_001` | 10 | 11 | 0.68 | 0.20 | 0.54 | 1.00 | 0.47 | +0.53 |
 | `sabr_001` | 10 | 11 | 0.68 | 0.10 | 0.54 | 1.00 | 0.51 | +0.49 |
-| `silat_rahim_001` | 0 | 1 | 0.77 | 0.40 | 0.17 | 1.00 | 0.04 | +0.96 |
+| `sabr_001` | 10 | 11 | 0.68 | 0.05 | 0.54 | 0.96 | 0.51 | +0.44 |
+| `sabr_001` | 10 | 11 | 0.68 | 0.02 | 0.54 | 0.83 | 0.53 | +0.31 |
 | `silat_rahim_001` | 0 | 1 | 0.77 | 0.20 | 0.17 | 1.00 | 0.06 | +0.94 |
 | `silat_rahim_001` | 0 | 1 | 0.77 | 0.10 | 0.17 | 1.00 | 0.07 | +0.93 |
+| `silat_rahim_001` | 0 | 1 | 0.77 | 0.05 | 0.17 | 0.92 | 0.11 | +0.81 |
+| `silat_rahim_001` | 0 | 1 | 0.77 | 0.02 | 0.17 | 0.50 | 0.15 | +0.35 |
 | `jiwar_001` | 0 | 1 | 0.57 | 0.20 | 0.38 | 1.00 | 0.25 | +0.75 |
 | `jiwar_001` | 0 | 1 | 0.57 | 0.10 | 0.38 | 1.00 | 0.31 | +0.69 |
-| `jiwar_001` | 0 | 1 | 0.57 | 0.40 | 0.38 | 1.00 | 0.32 | +0.68 |
+| `jiwar_001` | 0 | 1 | 0.57 | 0.05 | 0.38 | 0.96 | 0.36 | +0.60 |
+| `jiwar_001` | 0 | 1 | 0.57 | 0.02 | 0.38 | 0.67 | 0.35 | +0.32 |
 | `shura_001` | 1 | 2 | 0.67 | 0.10 | 0.33 | 1.00 | 0.32 | +0.68 |
 | `shura_001` | 1 | 2 | 0.67 | 0.20 | 0.33 | 1.00 | 0.32 | +0.68 |
-| `shura_001` | 1 | 2 | 0.67 | 0.40 | 0.33 | 1.00 | 0.33 | +0.67 |
-| `fazaa_001` | 3 | 4 | 0.80 | 0.40 | 0.33 | 1.00 | 0.53 | +0.47 |
+| `shura_001` | 1 | 2 | 0.67 | 0.05 | 0.33 | 0.88 | 0.33 | +0.54 |
+| `shura_001` | 1 | 2 | 0.67 | 0.02 | 0.33 | 0.58 | 0.35 | +0.24 |
 | `fazaa_001` | 3 | 4 | 0.80 | 0.10 | 0.33 | 0.96 | 0.54 | +0.42 |
+| `fazaa_001` | 3 | 4 | 0.80 | 0.05 | 0.33 | 0.83 | 0.43 | +0.40 |
 | `fazaa_001` | 3 | 4 | 0.80 | 0.20 | 0.33 | 1.00 | 0.60 | +0.40 |
+| `fazaa_001` | 3 | 4 | 0.80 | 0.02 | 0.33 | 0.54 | 0.42 | +0.12 |
 | `hayaa_001` | 8 | 9 | 0.75 | 0.10 | 0.17 | 1.00 | 0.29 | +0.71 |
 | `hayaa_001` | 8 | 9 | 0.75 | 0.20 | 0.17 | 1.00 | 0.42 | +0.58 |
-| `hayaa_001` | 8 | 9 | 0.75 | 0.40 | 0.17 | 1.00 | 0.51 | +0.49 |
+| `hayaa_001` | 8 | 9 | 0.75 | 0.05 | 0.17 | 0.79 | 0.25 | +0.54 |
+| `hayaa_001` | 8 | 9 | 0.75 | 0.02 | 0.17 | 0.46 | 0.22 | +0.24 |
+
+## 6. Does subtracting the concept remove it?
+
+The mirror of the section above, and the claim representation
+engineering is most often reached for and least often checked.
+The direction is *subtracted* at the same layer, and the probe
+is run on the concept's own exemplars - held out fold by fold,
+because a probe trained on an exemplar recognises it whatever
+is injected.
+
+`base` is how often the probes recognise exemplars they never
+saw; it caps how far suppression could possibly push. `Probe`
+is those probes' held-out balanced accuracy, which has to be
+read first: a probe answering "positive" to everything would
+reach a baseline of 1.00 too, and anything that unsettled it
+would look like removal.
+
+**`drop` is the column that carries information.** Subtracting
+a large enough vector damages the representation whatever its
+direction, and a probe stops recognising damaged activations;
+only the part a random direction of the same norm fails to
+reproduce is evidence about the concept.
+
+A steered rate of 0.00 says the probe's decision was flipped on
+every held-out exemplar. That is not the same claim as the
+concept having been removed from the model: a linear probe
+flips once the shift along its normal exceeds its margin, and
+the shift here is a fixed fraction of the residual norm. The
+gap to the random arm shows the flip is specific to this
+direction, not that nothing else changed.
+
+| Concept | Inject | Read | Probe | Strength | Base | Steered | Random | Drop |
+|---|---|---|---|---|---|---|---|---|
+| `wasta_001` | 4 | 5 | 0.42 | -0.10 | 0.58 | 0.00 | 0.69 | +0.69 |
+| `wasta_001` | 4 | 5 | 0.42 | -0.05 | 0.58 | 0.00 | 0.67 | +0.67 |
+| `wasta_001` | 4 | 5 | 0.42 | -0.20 | 0.58 | 0.00 | 0.64 | +0.64 |
+| `wasta_001` | 4 | 5 | 0.42 | -0.02 | 0.58 | 0.00 | 0.61 | +0.61 |
+| `diyafa_001` | 0 | 1 | 0.62 | -0.10 | 0.75 | 0.00 | 0.94 | +0.94 |
+| `diyafa_001` | 0 | 1 | 0.62 | -0.20 | 0.75 | 0.00 | 0.94 | +0.94 |
+| `diyafa_001` | 0 | 1 | 0.62 | -0.05 | 0.75 | 0.17 | 0.86 | +0.69 |
+| `diyafa_001` | 0 | 1 | 0.62 | -0.02 | 0.75 | 0.50 | 0.81 | +0.31 |
+| `sharaf_001` | 0 | 1 | 0.81 | -0.10 | 1.00 | 0.00 | 0.86 | +0.86 |
+| `sharaf_001` | 0 | 1 | 0.81 | -0.20 | 1.00 | 0.00 | 0.75 | +0.75 |
+| `sharaf_001` | 0 | 1 | 0.81 | -0.05 | 1.00 | 0.25 | 0.97 | +0.72 |
+| `sharaf_001` | 0 | 1 | 0.81 | -0.02 | 1.00 | 0.92 | 1.00 | +0.08 |
+| `sabr_001` | 10 | 11 | 0.65 | -0.10 | 0.67 | 0.00 | 0.56 | +0.56 |
+| `sabr_001` | 10 | 11 | 0.65 | -0.20 | 0.67 | 0.00 | 0.56 | +0.56 |
+| `sabr_001` | 10 | 11 | 0.65 | -0.05 | 0.67 | 0.08 | 0.61 | +0.53 |
+| `sabr_001` | 10 | 11 | 0.65 | -0.02 | 0.67 | 0.25 | 0.67 | +0.42 |
+| `silat_rahim_001` | 0 | 1 | 0.71 | -0.10 | 0.92 | 0.00 | 0.92 | +0.92 |
+| `silat_rahim_001` | 0 | 1 | 0.71 | -0.20 | 0.92 | 0.00 | 0.92 | +0.92 |
+| `silat_rahim_001` | 0 | 1 | 0.71 | -0.05 | 0.92 | 0.08 | 0.92 | +0.83 |
+| `silat_rahim_001` | 0 | 1 | 0.71 | -0.02 | 0.92 | 0.67 | 0.92 | +0.25 |
+| `jiwar_001` | 0 | 1 | 0.56 | -0.10 | 0.75 | 0.00 | 0.89 | +0.89 |
+| `jiwar_001` | 0 | 1 | 0.56 | -0.20 | 0.75 | 0.00 | 0.89 | +0.89 |
+| `jiwar_001` | 0 | 1 | 0.56 | -0.05 | 0.75 | 0.08 | 0.81 | +0.72 |
+| `jiwar_001` | 0 | 1 | 0.56 | -0.02 | 0.75 | 0.67 | 0.78 | +0.11 |
+| `shura_001` | 1 | 2 | 0.65 | -0.05 | 0.92 | 0.00 | 0.86 | +0.86 |
+| `shura_001` | 1 | 2 | 0.65 | -0.10 | 0.92 | 0.00 | 0.83 | +0.83 |
+| `shura_001` | 1 | 2 | 0.65 | -0.20 | 0.92 | 0.00 | 0.72 | +0.72 |
+| `shura_001` | 1 | 2 | 0.65 | -0.02 | 0.92 | 0.33 | 0.83 | +0.50 |
+| `fazaa_001` | 3 | 4 | 0.75 | -0.10 | 1.00 | 0.08 | 0.78 | +0.69 |
+| `fazaa_001` | 3 | 4 | 0.75 | -0.20 | 1.00 | 0.00 | 0.67 | +0.67 |
+| `fazaa_001` | 3 | 4 | 0.75 | -0.05 | 1.00 | 0.42 | 0.83 | +0.42 |
+| `fazaa_001` | 3 | 4 | 0.75 | -0.02 | 1.00 | 0.83 | 0.94 | +0.11 |
+| `hayaa_001` | 8 | 9 | 0.71 | -0.10 | 0.92 | 0.00 | 0.83 | +0.83 |
+| `hayaa_001` | 8 | 9 | 0.71 | -0.20 | 0.92 | 0.00 | 0.53 | +0.53 |
+| `hayaa_001` | 8 | 9 | 0.71 | -0.05 | 0.92 | 0.42 | 0.86 | +0.44 |
+| `hayaa_001` | 8 | 9 | 0.71 | -0.02 | 0.92 | 0.83 | 0.89 | +0.06 |
 
 ## Limitations
 

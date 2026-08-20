@@ -1,10 +1,10 @@
 {
   "schema_version": "1.0",
   "experiment": "pilot_qwen2.5-0.5b",
-  "timestamp_utc": "2026-08-20T13:12:38+00:00",
+  "timestamp_utc": "2026-08-20T19:14:44+00:00",
   "git": {
-    "commit": "d13b40b886680da7a2ce372e2139d8c91c7842db",
-    "branch": "feat/causal-readback",
+    "commit": "a711616d54154f744d913f4f5f3c618b68a86177",
+    "branch": "feat/suppression-check",
     "dirty": false,
     "untracked": 0
   },
@@ -57,9 +57,16 @@
     "baselines_run": true,
     "readback_run": true,
     "readback_strengths": [
+      0.02,
+      0.05,
       0.1,
-      0.2,
-      0.4
+      0.2
+    ],
+    "suppression_strengths": [
+      -0.02,
+      -0.05,
+      -0.1,
+      -0.2
     ],
     "readback_random_controls": 3,
     "evaluation_prompts": [

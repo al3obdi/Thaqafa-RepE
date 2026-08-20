@@ -44,9 +44,10 @@ from typing import TYPE_CHECKING
 
 import numpy as np
 import torch
+from sklearn.model_selection import StratifiedKFold
 
 from src.data.contrastive import build_contrast_examples, neutral_prompt_bank
-from src.utils.probes import DEFAULT_SEED, LinearProbe
+from src.utils.probes import DEFAULT_N_SPLITS, DEFAULT_SEED, LinearProbe
 
 if TYPE_CHECKING:  # pragma: no cover - imported for type checking only
     from src.models.rep_engine import CulturalRepE
@@ -167,6 +168,53 @@ def _positive_rate(probe: LinearProbe, activations: torch.Tensor) -> float:
     return float(np.mean(np.asarray(predictions) == 1))
 
 
+def _rate_under(
+    engine: CulturalRepE,
+    direction: torch.Tensor,
+    probe: LinearProbe,
+    prompts: list[str],
+    *,
+    inject_layer: int,
+    read_layer: int,
+    strength: float,
+    strength_mode: str,
+) -> float:
+    """Positive rate with *direction* injected, then cleanly removed.
+
+    The concept arm and the random arm both go through here, so the two cannot
+    differ by anything except the direction that was passed in. The direction
+    is parked in the engine's cache only for the duration of the steered pass,
+    and removed in a ``finally`` so a failure part-way cannot leave the model
+    steered or the cache polluted.
+
+    Args:
+        engine: Engine with a loaded model.
+        direction: Unit-norm direction to inject.
+        probe: A fitted probe to read with.
+        prompts: Texts to run through the steered model.
+        inject_layer: Layer to add the direction to.
+        read_layer: Layer the probe reads from.
+        strength: Injection coefficient. Negative suppresses.
+        strength_mode: ``"relative"`` or ``"absolute"``.
+
+    Returns:
+        The share of *prompts* the probe calls positive.
+    """
+    engine.concept_vectors[_CONTROL_KEY] = direction
+    engine.extraction_layers[_CONTROL_KEY] = inject_layer
+    try:
+        with engine.steering(
+            _CONTROL_KEY,
+            strength=strength,
+            layers=[inject_layer],
+            strength_mode=strength_mode,
+        ):
+            return _positive_rate(probe, engine.collect_activations(prompts, read_layer))
+    finally:
+        engine.concept_vectors.pop(_CONTROL_KEY, None)
+        engine.extraction_layers.pop(_CONTROL_KEY, None)
+
+
 def readback(
     engine: CulturalRepE,
     concept: str,
@@ -244,19 +292,16 @@ def readback(
 
     def rate_under(direction: torch.Tensor) -> float:
         """Positive rate with *direction* injected, then cleanly removed."""
-        engine.concept_vectors[_CONTROL_KEY] = direction
-        engine.extraction_layers[_CONTROL_KEY] = inject_layer
-        try:
-            with engine.steering(
-                _CONTROL_KEY,
-                strength=strength,
-                layers=[inject_layer],
-                strength_mode=strength_mode,
-            ):
-                return _positive_rate(probe, engine.collect_activations(prompts, read_layer))
-        finally:
-            engine.concept_vectors.pop(_CONTROL_KEY, None)
-            engine.extraction_layers.pop(_CONTROL_KEY, None)
+        return _rate_under(
+            engine,
+            direction,
+            probe,
+            prompts,
+            inject_layer=inject_layer,
+            read_layer=read_layer,
+            strength=strength,
+            strength_mode=strength_mode,
+        )
 
     # Both arms go through one code path, so they cannot differ by anything
     # except the direction that was injected.
@@ -325,3 +370,282 @@ def summarize_readback(results: dict[str, ReadbackResult]) -> list[dict[str, flo
         for result in results.values()
     ]
     return sorted(rows, key=lambda row: float(row["lift_over_random"]), reverse=True)
+
+
+@dataclass(frozen=True)
+class SuppressionResult:
+    """Whether negative steering removes a concept the probe can already see.
+
+    Amplification is measured on neutral prompts, where the probe starts low
+    and has room to rise. Suppression has to be measured where the probe starts
+    *high*, which means the concept's own exemplars - and a probe that was
+    trained on them would recognise them no matter what was injected. Every
+    rate here is therefore pooled over held-out folds: each exemplar is scored
+    by a probe that never saw it.
+
+    Attributes:
+        concept: Concept identifier.
+        inject_layer: Layer the direction was subtracted from.
+        read_layer: Layer the probes read from, strictly deeper.
+        strength: Injection coefficient. Negative, or the check is measuring
+            amplification under another name.
+        strength_mode: ``"relative"`` or ``"absolute"``.
+        baseline_rate: Share of held-out exemplars the probes recognised with
+            no steering. This is the probes' recall, and it caps how far
+            suppression can possibly push: a concept its probe barely
+            recognises to begin with cannot be shown to be removable.
+        steered_rate: The same share with the concept direction subtracted.
+        random_rates: The same share for each matched-norm random direction,
+            subtracted at the same layer and strength.
+        n_exemplars: Held-out exemplars pooled across folds.
+        n_folds: Folds the pooling ran over.
+        probe_balanced_accuracy: Held-out balanced accuracy of the same
+            probes, pooled the same way. Without it a baseline of 1.00 is
+            ambiguous: a probe that answered "positive" to everything would
+            reach it too, and any perturbation that unsettled it would look
+            like suppression. A value near 0.5 means the drop below is not
+            evidence about the concept.
+    """
+
+    concept: str
+    inject_layer: int
+    read_layer: int
+    strength: float
+    strength_mode: str
+    baseline_rate: float
+    steered_rate: float
+    random_rates: list[float] = field(default_factory=list)
+    n_exemplars: int = 0
+    n_folds: int = 0
+    probe_balanced_accuracy: float = 0.0
+
+    @property
+    def mean_random_rate(self) -> float:
+        """Average held-out recognition rate under the random controls."""
+        if not self.random_rates:
+            return self.baseline_rate
+        return float(np.mean(self.random_rates))
+
+    @property
+    def drop_from_baseline(self) -> float:
+        """How far steering pushed recognition down. Positive means down."""
+        return self.baseline_rate - self.steered_rate
+
+    @property
+    def drop_beyond_random(self) -> float:
+        """How much of that drop a random direction did not also produce.
+
+        The number worth reading. Subtracting a large enough vector damages
+        the representation whatever its direction, and a probe stops
+        recognising damaged activations; only the part a random direction of
+        the same norm fails to reproduce is evidence about the concept.
+        """
+        return self.mean_random_rate - self.steered_rate
+
+
+def suppression(
+    engine: CulturalRepE,
+    concept: str,
+    inject_layer: int,
+    read_layer: int,
+    strength: float = -DEFAULT_RELATIVE_STRENGTH,
+    strength_mode: str = "relative",
+    n_random: int = DEFAULT_N_RANDOM,
+    seed: int = DEFAULT_SEED,
+    n_splits: int = DEFAULT_N_SPLITS,
+) -> SuppressionResult:
+    """Subtract a concept from its own exemplars and see whether it disappears.
+
+    This is the claim representation engineering is most often reached for and
+    least often checked: that a direction can be removed, not merely that
+    adding it changes something. Amplification and suppression are not
+    symmetric - a model can have a direction that is easy to add along and hard
+    to remove, because removing it takes the activation somewhere the model
+    never puts it.
+
+    Args:
+        engine: Engine with a loaded model.
+        concept: Concept identifier.
+        inject_layer: Layer to subtract the direction at.
+        read_layer: Layer to probe, strictly deeper than ``inject_layer``.
+        strength: Injection coefficient. Must be negative.
+        strength_mode: ``"relative"`` or ``"absolute"``.
+        n_random: Matched-norm random control directions.
+        seed: Seed for the probes, the folds and the control directions.
+        n_splits: Requested cross-validation folds, capped by the smaller class.
+
+    Returns:
+        The rates, with the control alongside.
+
+    Raises:
+        ValueError: If the layers are not ordered, ``strength`` is not
+            negative, or the concept cannot be resolved.
+        RuntimeError: If the model has not been loaded.
+    """
+    if read_layer <= inject_layer:
+        raise ValueError(
+            f"read_layer must be deeper than inject_layer, got "
+            f"read={read_layer} inject={inject_layer}."
+        )
+    if strength >= 0:
+        raise ValueError(
+            f"strength must be negative to suppress, got {strength}. "
+            "A positive coefficient measures amplification; use readback() for that."
+        )
+
+    engine._require_model()
+    positives, curated = engine._resolve_examples(concept, None)
+    negatives = build_contrast_examples(positives, curated)
+
+    features = torch.cat(
+        [
+            engine.collect_activations(positives, read_layer),
+            engine.collect_activations(negatives, read_layer),
+        ],
+        dim=0,
+    )
+    labels = np.array([1] * len(positives) + [0] * len(negatives))
+    prompts = [*positives, *negatives]
+
+    concept_direction = engine.contrast_direction(
+        positives, negatives, layer=inject_layer, label=f"{concept}@L{inject_layer}"
+    )
+    d_model = int(engine.model.cfg.d_model)  # type: ignore[union-attr]
+    controls = random_directions(d_model, n_random, seed) if n_random > 0 else []
+
+    effective_splits = min(n_splits, int(min(np.bincount(labels)[np.bincount(labels) > 0])))
+    if effective_splits < 2:
+        raise ValueError(
+            f"Concept {concept!r} has too few exemplars per class to hold any out "
+            f"({effective_splits} in the smallest class)."
+        )
+    splitter = StratifiedKFold(n_splits=effective_splits, shuffle=True, random_state=seed)
+
+    baseline_hits = 0
+    steered_hits = 0
+    control_hits = [0] * len(controls)
+    held_out_total = 0
+    # Held-out negatives are tracked only to show the probes are discriminative.
+    # A probe answering "positive" to everything would reach a baseline of 1.00
+    # on the exemplars, and anything that unsettled it would read as suppression.
+    negative_total = 0
+    negative_hits = 0
+
+    for train_index, test_index in splitter.split(features.numpy(), labels):
+        held_out_positive = [
+            prompts[i] for i in test_index if labels[i] == 1
+        ]  # only exemplars can lose their label
+        held_out_negative = [prompts[i] for i in test_index if labels[i] == 0]
+        if not held_out_positive:
+            continue
+
+        probe = LinearProbe(seed=seed)
+        probe.fit(features[train_index], labels[train_index])
+
+        if held_out_negative:
+            negative_total += len(held_out_negative)
+            negative_hits += round(
+                _positive_rate(probe, engine.collect_activations(held_out_negative, read_layer))
+                * len(held_out_negative)
+            )
+
+        held_out_total += len(held_out_positive)
+        baseline_hits += round(
+            _positive_rate(probe, engine.collect_activations(held_out_positive, read_layer))
+            * len(held_out_positive)
+        )
+        steered_hits += round(
+            _rate_under(
+                engine,
+                concept_direction,
+                probe,
+                held_out_positive,
+                inject_layer=inject_layer,
+                read_layer=read_layer,
+                strength=strength,
+                strength_mode=strength_mode,
+            )
+            * len(held_out_positive)
+        )
+        for index, direction in enumerate(controls):
+            control_hits[index] += round(
+                _rate_under(
+                    engine,
+                    direction,
+                    probe,
+                    held_out_positive,
+                    inject_layer=inject_layer,
+                    read_layer=read_layer,
+                    strength=strength,
+                    strength_mode=strength_mode,
+                )
+                * len(held_out_positive)
+            )
+
+    if held_out_total == 0:  # pragma: no cover - guarded by effective_splits
+        raise ValueError(f"No held-out exemplars for {concept!r}")
+
+    # Balanced accuracy is the mean of the two held-out recalls, so it is 0.5
+    # for a probe that answers with one class regardless of the input.
+    true_positive_rate = baseline_hits / held_out_total
+    true_negative_rate = 1.0 - (negative_hits / negative_total) if negative_total else 0.5
+
+    result = SuppressionResult(
+        concept=concept,
+        inject_layer=inject_layer,
+        read_layer=read_layer,
+        strength=strength,
+        strength_mode=strength_mode,
+        baseline_rate=baseline_hits / held_out_total,
+        steered_rate=steered_hits / held_out_total,
+        random_rates=[hits / held_out_total for hits in control_hits],
+        n_exemplars=held_out_total,
+        n_folds=effective_splits,
+        probe_balanced_accuracy=(true_positive_rate + true_negative_rate) / 2.0,
+    )
+    logger.info(
+        "%s: subtract at L%d -> read L%d | baseline %.2f steered %.2f random %.2f "
+        "(drop beyond random %+.2f, probe %.3f)",
+        concept,
+        inject_layer,
+        read_layer,
+        result.baseline_rate,
+        result.steered_rate,
+        result.mean_random_rate,
+        result.drop_beyond_random,
+        result.probe_balanced_accuracy,
+    )
+    return result
+
+
+def summarize_suppression(
+    results: dict[str, SuppressionResult],
+) -> list[dict[str, float | int | str]]:
+    """Flatten suppression results into rows for a table or CSV.
+
+    Args:
+        results: Mapping from concept identifier to its result.
+
+    Returns:
+        One row per concept, ordered by descending drop beyond the random
+        control, so the concepts that can most clearly be removed come first.
+    """
+    rows: list[dict[str, float | int | str]] = [
+        {
+            "concept_id": result.concept,
+            "inject_layer": result.inject_layer,
+            "read_layer": result.read_layer,
+            "strength": result.strength,
+            "strength_mode": result.strength_mode,
+            "baseline_rate": round(result.baseline_rate, 6),
+            "steered_rate": round(result.steered_rate, 6),
+            "mean_random_rate": round(result.mean_random_rate, 6),
+            "drop_beyond_random": round(result.drop_beyond_random, 6),
+            "n_random": len(result.random_rates),
+            "probe_balanced_accuracy": round(result.probe_balanced_accuracy, 6),
+            "n_exemplars": result.n_exemplars,
+            "n_folds": result.n_folds,
+        }
+        for result in results.values()
+    ]
+    return sorted(rows, key=lambda row: float(row["drop_beyond_random"]), reverse=True)

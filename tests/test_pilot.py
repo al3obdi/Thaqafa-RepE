@@ -102,6 +102,25 @@ class TestLoadConceptNames:
 class TestParseArgs:
     """The defaults are part of what makes a run reproducible."""
 
+    def test_the_strength_grids_span_the_onset_not_only_saturation(self) -> None:
+        """A grid saturated at every point shows no dose-response at all.
+
+        The first grid tried here started at a coefficient that already pinned
+        every concept, so every row read the same and the table said nothing
+        about how much intervention the effect needs.
+        """
+        assert min(run_pilot.DEFAULT_READBACK_STRENGTHS) <= 0.02
+        assert max(run_pilot.DEFAULT_READBACK_STRENGTHS) >= 0.20
+
+    def test_suppression_mirrors_the_readback_magnitudes(self) -> None:
+        """So amplification and suppression compare point for point."""
+        assert [-s for s in run_pilot.DEFAULT_SUPPRESSION_STRENGTHS] == list(
+            run_pilot.DEFAULT_READBACK_STRENGTHS
+        )
+
+    def test_suppression_strengths_are_all_negative(self) -> None:
+        assert all(s < 0 for s in run_pilot.DEFAULT_SUPPRESSION_STRENGTHS)
+
     def test_defaults_are_norm_relative(self) -> None:
         """A fixed absolute grid is not comparable across layers."""
         args = run_pilot.parse_args([])
@@ -303,6 +322,52 @@ class TestReadbackPhase:
             extracted, ["wasta_001"], {"wasta_001": 0}, strengths=(0.2,), n_random=1
         )
         assert all(int(row["read_layer"]) > int(row["inject_layer"]) for row in rows)
+
+
+class TestSuppressionPhase:
+    """The mirror check: does subtracting the concept remove it?"""
+
+    @pytest.fixture
+    def extracted(self, engine: CulturalRepE) -> CulturalRepE:
+        """An engine with the concept extracted, as the runner leaves it."""
+        engine.extract_vector("wasta_001", layer=0)
+        return engine
+
+    def test_uses_the_same_layer_pair_as_the_readback(self, extracted: CulturalRepE) -> None:
+        """Otherwise any asymmetry could be an artefact of where each was measured."""
+        amplify = run_pilot.run_readback(
+            extracted, ["wasta_001"], {"wasta_001": 2}, strengths=(0.2,), n_random=1
+        )
+        suppress = run_pilot.run_suppression(
+            extracted, ["wasta_001"], {"wasta_001": 2}, strengths=(-0.2,), n_random=1
+        )
+        assert amplify[0]["inject_layer"] == suppress[0]["inject_layer"]
+        assert amplify[0]["read_layer"] == suppress[0]["read_layer"]
+
+    def test_every_strength_is_negative(self, extracted: CulturalRepE) -> None:
+        """A positive coefficient here would be amplification under another name."""
+        rows = run_pilot.run_suppression(
+            extracted, ["wasta_001"], {"wasta_001": 2}, strengths=(-0.2, -0.4), n_random=1
+        )
+        assert {float(row["strength"]) for row in rows} == {-0.2, -0.4}
+
+    def test_carries_the_control_and_the_probe_quality(self, extracted: CulturalRepE) -> None:
+        """A baseline of 1.00 is ambiguous without the probe's own accuracy."""
+        rows = run_pilot.run_suppression(
+            extracted, ["wasta_001"], {"wasta_001": 2}, strengths=(-0.2,), n_random=2
+        )
+        assert rows
+        assert all(row["n_random"] == 2 for row in rows)
+        assert all("probe_balanced_accuracy" in row for row in rows)
+        assert all("drop_beyond_random" in row for row in rows)
+
+    def test_skips_a_concept_whose_best_layer_is_the_first_block(
+        self, extracted: CulturalRepE
+    ) -> None:
+        rows = run_pilot.run_suppression(
+            extracted, ["wasta_001"], {"wasta_001": 0}, strengths=(-0.2,), n_random=1
+        )
+        assert rows == []
 
 
 class TestWriteReport:
@@ -672,6 +737,37 @@ class TestMain:
         assert "Does steering write what the probe reads" in text
         assert "only column that carries information" in text
         assert "discarded, not explained" in text
+
+    def test_the_suppression_check_reaches_the_artefacts(self, tmp_path: Path) -> None:
+        """Removal is the claim RepE is reached for; it needs an artefact too."""
+        run_pilot.main(
+            [
+                "--model",
+                "dummy/pilot",
+                "--concepts",
+                "wasta_001",
+                "--strengths",
+                "0.2",
+                "--output-dir",
+                str(tmp_path / "run"),
+                "--no-baselines",
+                "--permutations",
+                "0",
+            ]
+        )
+        out = tmp_path / "run"
+        path = out / "suppression.csv"
+        if not path.exists():
+            # The fake's best layer can land on block 0, where both causal
+            # checks are correctly skipped.
+            return
+
+        rows = _read_csv(path)
+        assert all(float(row["strength"]) < 0 for row in rows)
+        assert all(float(row["probe_balanced_accuracy"]) >= 0.0 for row in rows)
+        text = (out / "README.md").read_text(encoding="utf-8")
+        assert "Does subtracting the concept remove it" in text
+        assert "column that carries information" in text
 
     def test_is_deterministic_for_a_fixed_seed(self, tmp_path: Path) -> None:
         """Two runs of the same command must produce the same numbers."""
