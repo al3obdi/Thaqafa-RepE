@@ -67,16 +67,9 @@ wandb/
 
 # `results/` is deliberately NOT ignored: it holds the committed artefacts of
 # experiment runs (manifest, CSVs, report), which are the evidence behind every
-# number the paper quotes. `outputs/` is the scratch equivalent for local runs.
-
-# Keep paper result CSVs and Markdown tracked for reproducibility
-!outputs/paper_results/
-!outputs/paper_results/*.csv
-!outputs/paper_results/*.md
-# But not large or regeneratable files
-outputs/paper_results/vectors.json
-outputs/paper_results/figures/*.png
-outputs/paper_results/generations/
+# number the paper quotes. `outputs/` stays fully ignored as the scratch
+# equivalent for local runs - the carve-outs that used to sit here kept a
+# second, half-tracked results location alive after nothing wrote to it.
 
 # ---------------------------------------------------------------------------
 # Environment and secrets (the example template stays tracked)
