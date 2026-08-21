@@ -515,7 +515,7 @@ class TestWriteReport:
         manifest["git"]["dirty"] = True
         layer_rows, best, steering_rows = self._rows()
         path = run_pilot.write_report(tmp_path, manifest, layer_rows, best, steering_rows, [])
-        assert "uncommitted changes" in path.read_text(encoding="utf-8")
+        assert "uncommitted code changes" in path.read_text(encoding="utf-8")
 
     def test_untracked_output_files_do_not_raise_the_alarm(self, tmp_path: Path) -> None:
         """Every run writes output; flagging that would train readers to ignore it."""
@@ -523,7 +523,7 @@ class TestWriteReport:
         manifest["git"]["untracked"] = 17
         layer_rows, best, steering_rows = self._rows()
         path = run_pilot.write_report(tmp_path, manifest, layer_rows, best, steering_rows, [])
-        assert "uncommitted changes" not in path.read_text(encoding="utf-8")
+        assert "uncommitted code changes" not in path.read_text(encoding="utf-8")
 
     def test_omits_the_baseline_section_when_it_did_not_run(self, tmp_path: Path) -> None:
         """An empty table would read as "prompting did nothing"."""

@@ -578,7 +578,7 @@ def write_report(
     """
     model = manifest["model"]["name"]
     commit = manifest["git"]["commit"][:12]
-    dirty = " (uncommitted changes)" if manifest["git"]["dirty"] else ""
+    dirty = " (uncommitted code changes)" if manifest["git"]["dirty"] else ""
 
     lines = [
         f"# Pilot results: `{model}`",
