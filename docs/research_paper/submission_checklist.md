@@ -48,7 +48,8 @@ review. Tick each item and verify before submission.
 - [ ] Random seeds documented
 - [ ] Hardware and compute time reported
 - [ ] `pyproject.toml` lockfile or `requirements.txt` included
-- [ ] `scripts/generate_paper_results.py` command documented in paper
+- [ ] `scripts/run_pilot.py` command documented in paper
+- [ ] Every reported number traceable to a committed `results/*/manifest.json`
 - [ ] Dataset file (`data/datasets/cultural_concepts.jsonl`) included in repo
 
 ## Ethics
@@ -77,7 +78,7 @@ review. Tick each item and verify before submission.
 
 ```bash
 # 1. Generate results
-python scripts/generate_paper_results.py --concepts wasta_001,muruah_001,diyafa_001
+python scripts/run_pilot.py --model gpt2 --output-dir results/pilot_gpt2 --seed 42
 
 # 2. Inject results into LaTeX
 python scripts/inject_results_to_tex.py

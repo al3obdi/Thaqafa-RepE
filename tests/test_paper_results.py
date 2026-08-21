@@ -541,14 +541,35 @@ class TestRunWithModel:
 
 
 class TestNoSecretsExposed:
-    """Ensure no tokens are hardcoded in the script."""
+    """No credential may be committed anywhere in the tree."""
 
-    def test_no_hardcoded_token_in_script(self) -> None:
-        """No HF token is hardcoded in generate_paper_results.py."""
+    def test_no_hardcoded_hugging_face_token_anywhere(self) -> None:
+        """Scans every tracked source and document, not one named file.
+
+        The previous version checked a single script. A guarantee that holds
+        for one file and no other is not a guarantee, and it went stale the
+        moment that file was deleted.
+        """
         import re
+        import subprocess
 
-        script_path = PROJECT_ROOT / "scripts" / "generate_paper_results.py"
-        content = script_path.read_text()
+        listing = subprocess.run(  # noqa: S603
+            ["git", "ls-files"],
+            cwd=PROJECT_ROOT,
+            capture_output=True,
+            text=True,
+            check=True,
+        )
         token_pattern = re.compile(r"hf_[A-Za-z0-9]{20,}")
-        matches = token_pattern.findall(content)
-        assert len(matches) == 0, f"Found hardcoded token patterns: {matches}"
+
+        offenders = []
+        for name in listing.stdout.split():
+            path = PROJECT_ROOT / name
+            try:
+                content = path.read_text(encoding="utf-8")
+            except (OSError, UnicodeDecodeError):
+                continue  # binary or unreadable: nothing to scan
+            if token_pattern.search(content):
+                offenders.append(name)
+
+        assert not offenders, f"Possible hardcoded tokens in: {offenders}"

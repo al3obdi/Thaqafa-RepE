@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Inject experimental results from RESULTS_SUMMARY.md into a LaTeX paper.
 
-Reads the Markdown summary produced by ``scripts/generate_paper_results.py``
+Reads the Markdown summary produced by ``scripts/run_pilot.py``
 and replaces placeholder ``\\todo{...}`` markers in ``main.tex`` with
 actual tables, figures, and numbers.
 
@@ -169,7 +169,7 @@ def check_provenance(results_md: str) -> None:
     if PROVENANCE_MARKER not in results_md:
         raise SystemExit(
             "ERROR: RESULTS_SUMMARY.md carries no live-model provenance marker. "
-            "Regenerate it with scripts/generate_paper_results.py against a real "
+            "Regenerate it with scripts/run_pilot.py against a real "
             "model; refusing to inject unverified numbers into the paper."
         )
 
@@ -335,7 +335,7 @@ def main() -> None:
 
     if not results_path.exists():
         logger.error("Results file not found: %s", results_path)
-        logger.error("Run scripts/generate_paper_results.py first.")
+        logger.error("Run scripts/run_pilot.py first.")
         raise SystemExit(1)
 
     if not template_path.exists():

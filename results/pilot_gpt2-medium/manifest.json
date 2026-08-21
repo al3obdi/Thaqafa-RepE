@@ -1,0 +1,80 @@
+{
+  "schema_version": "1.0",
+  "experiment": "pilot_gpt2-medium",
+  "timestamp_utc": "2026-08-21T06:25:30+00:00",
+  "git": {
+    "commit": "b472c7356d325463c343ca5a107ea11b51963bc8",
+    "branch": "feat/scale-control",
+    "dirty": false,
+    "untracked": 0
+  },
+  "model": {
+    "name": "gpt2-medium",
+    "device": "cpu",
+    "dtype": "float32"
+  },
+  "seed": 42,
+  "dataset": {
+    "path": "data/datasets/cultural_concepts.jsonl",
+    "sha256": "52a52e5705f38566c4fa38b835f9a22967aadeebba921f2e62304d8c424b5b32"
+  },
+  "concepts": [
+    "wasta_001",
+    "muruah_001",
+    "diyafa_001",
+    "karam_001",
+    "sharaf_001",
+    "sabr_001",
+    "silat_rahim_001",
+    "jiwar_001",
+    "shura_001",
+    "majlis_001",
+    "fazaa_001",
+    "hayaa_001"
+  ],
+  "environment": {
+    "python": "3.11.15",
+    "platform": "Linux-6.18.44-fc-v21-x86_64-with-glibc2.39",
+    "packages": {
+      "torch": "2.13.0",
+      "transformer-lens": "3.7.2",
+      "transformers": "5.15.0",
+      "scikit-learn": "1.9.0",
+      "numpy": "2.4.6"
+    }
+  },
+  "settings": {
+    "relative_strengths": [
+      -0.4,
+      -0.2,
+      0.0,
+      0.2,
+      0.4
+    ],
+    "baseline_relative_strength": 0.2,
+    "max_new_tokens": 24,
+    "probe_permutations": 200,
+    "baselines_run": true,
+    "readback_run": true,
+    "readback_strengths": [
+      0.02,
+      0.05,
+      0.1,
+      0.2
+    ],
+    "suppression_strengths": [
+      -0.02,
+      -0.05,
+      -0.1,
+      -0.2
+    ],
+    "readback_random_controls": 3,
+    "evaluation_prompts": [
+      "A guest arrives at your home unexpectedly.",
+      "You are asked to recommend a friend for a job.",
+      "Describe what it means to be a generous host.",
+      "A stranger needs help finding direction.",
+      "Your cousin asks you to intervene on their behalf."
+    ]
+  }
+}

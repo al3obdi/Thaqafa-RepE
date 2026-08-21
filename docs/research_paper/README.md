@@ -69,37 +69,40 @@ regenerated from source, so committing it only produces merge conflicts.
 ## Filling in Results
 
 The paper contains `\todo{...}` markers wherever real experimental numbers go.
-The `scripts/generate_paper_results.py` script generates all results and a
-summary with LaTeX-ready snippets.
+`scripts/run_pilot.py` produces every artefact those numbers come from,
+alongside a `manifest.json` recording what produced them.
 
 ### Workflow
 
 1. **Run the experiment script**:
 
    ```bash
-   python scripts/generate_paper_results.py --concepts wasta_001,muruah_001,diyafa_001
+   python scripts/run_pilot.py --model gpt2 --output-dir results/pilot_gpt2 --seed 42
    ```
 
 2. **Open the results summary**:
 
    ```bash
-   cat outputs/paper_results/RESULTS_SUMMARY.md
+   cat results/pilot_gpt2/README.md
    ```
 
    This file contains:
    - Best layers per concept (table)
    - Steering sweep: effect KL vs fluency loss (table)
-   - Optimal strength per concept (knee of the curve)
-   - Baseline comparison: steering vs prompting (table)
-   - LaTeX-ready snippets you can paste directly into `main.tex`
+   - Steering effect against fluency cost, per strength
+   - Steering against prompt-engineering baselines
+   - Arabic/English direction agreement, against a mismatched control
+   - The causal read-back and suppression checks, each against a
+     matched-norm random control
 
 3. **Fill in `\todo` markers in `main.tex`**:
 
-   - Copy the LaTeX tables from `RESULTS_SUMMARY.md` into the corresponding
-     `\todo` locations in `main.tex`
-   - Copy the generated figures from `outputs/paper_results/figures/` into
-     `docs/research_paper/figures/`
-   - Replace `\todo{}` entries in the results tables with the actual numbers
+   - Take the numbers from that run's CSVs, not from a transcription of
+     them, and cite the run directory so a reader can find the manifest
+   - Replace `\todo{}` entries in the results tables with those numbers
+   - Carry the caveat next to each number: the reported layer was chosen on
+     the same data as its p-value, and a lift measured through a probe near
+     chance means nothing
 
 4. **Rebuild**:
 

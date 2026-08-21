@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import csv
 import re
+import subprocess
 from pathlib import Path
 
 import pytest
@@ -65,7 +66,30 @@ def _readme_row(label: str) -> list[str]:
     raise AssertionError(f"No README summary row for {label}")
 
 
-RUNS = [directory.name for directory in sorted(RESULTS.iterdir()) if directory.is_dir()]
+def _committed_runs() -> list[str]:
+    """Return the run directories git is tracking, not whatever is on disk.
+
+    The README summarises committed artefacts. Reading the filesystem instead
+    would make this suite fail for the whole duration of any pipeline run,
+    since a run creates its output directory before it has anything to report
+    - which would train everyone to ignore a red suite.
+
+    Returns:
+        Sorted directory names under ``results/`` that contain tracked files.
+    """
+    listing = subprocess.run(  # noqa: S603
+        ["git", "ls-files", "results"],
+        cwd=PROJECT_ROOT,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if listing.returncode != 0:  # pragma: no cover - not a git checkout
+        return []
+    return sorted({line.split("/")[1] for line in listing.stdout.split() if "/" in line})
+
+
+RUNS = _committed_runs()
 
 
 @pytest.mark.parametrize("run", RUNS)
@@ -107,8 +131,14 @@ class TestReadmeMatchesArtefacts:
 
 def test_every_committed_run_appears_in_the_readme() -> None:
     """A run nobody links to is a run nobody reads."""
-    linked = {run for run in RUNS if f"results/{run}/" in README.read_text(encoding="utf-8")}
-    assert linked == set(RUNS)
+    text = README.read_text(encoding="utf-8")
+    missing = [run for run in RUNS if f"results/{run}/" not in text]
+    assert not missing, f"Committed but unlinked from the README: {missing}"
+
+
+def test_at_least_one_run_is_committed() -> None:
+    """Guards the parametrisation: an empty RUNS would silently pass everything."""
+    assert RUNS
 
 
 def test_the_readme_states_the_probe_threshold_it_counts_by() -> None:

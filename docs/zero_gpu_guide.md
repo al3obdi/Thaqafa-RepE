@@ -265,54 +265,70 @@ for cid, vec in vectors.items():
 
 ## Generating Paper Results
 
-The `scripts/generate_paper_results.py` script orchestrates the full experimental pipeline:
+`scripts/run_pilot.py` runs the full experimental pipeline in one command and
+writes every artefact the paper quotes.
 
 ### Prerequisites
 
-```bash
-export HF_TOKEN=hf_your_token_here
-pip install gradio_client matplotlib
-```
+None beyond the project's own dependencies. The pipeline runs on CPU, and no
+token is needed for the models used in the committed pilots. A gated model
+would need `HF_TOKEN` set in the environment; never put one in a file.
 
 ### Usage
 
 ```bash
-# Extract all 3 seed concepts and generate all outputs
-python scripts/generate_paper_results.py --concepts wasta_001,muruah_001,diyafa_001
+# Every concept in the dataset, on a small model, on CPU
+python scripts/run_pilot.py --model gpt2 --output-dir results/pilot_gpt2 --seed 42
 
-# Use a specific model
-python scripts/generate_paper_results.py --concepts wasta_001 \
-  --model meta-llama/Meta-Llama-3-8B-Instruct
+# A multilingual model
+python scripts/run_pilot.py --model Qwen/Qwen2.5-0.5B \
+  --output-dir results/pilot_qwen2.5-0.5b --seed 42
 
-# Custom output directory
-python scripts/generate_paper_results.py --concepts wasta_001 \
-  --output-dir outputs/paper_results
+# A subset of concepts, skipping the slow generation phases
+python scripts/run_pilot.py --model gpt2 --concepts wasta_001,diyafa_001 \
+  --no-baselines --no-readback --output-dir outputs/quick
 ```
 
 ### What the Script Does
 
-1. **Extraction**: Triggers vector extraction on the ZeroGPU Space via `extract_via_space()`
-2. **Layer sweep**: Runs linear probes across all layers, identifies best layer per concept
-3. **Steering sweep**: Measures effect (KL) vs cost (fluency loss) across strength grid
-4. **Baseline comparison**: Compares steering against prompt-based baselines
-5. **Report**: Generates `RESULTS_SUMMARY.md` with LaTeX-ready snippets
+1. **Layer sweep** - a cross-validated linear probe at every layer, reporting
+   balanced accuracy against a permutation p-value.
+2. **Extraction** - the concept vector, at the layer the probe picked.
+3. **Steering sweep** - effect (KL) against cost (fluency), at norm-relative
+   strengths so the numbers are comparable across layers and models.
+4. **Baselines** - steering against prompt-engineering conditions.
+5. **Cross-lingual check** - do the Arabic-only and English-only directions
+   agree, against a mismatched-concept control.
+6. **Causal read-back** - does injecting the direction make that concept's
+   probe fire, against a matched-norm random control.
+7. **Suppression** - does subtracting it stop the probe recognising held-out
+   exemplars, against the same control.
+8. **Report** - `README.md` with every table and the limitations attached.
 
 ### Output Files
 
-- `outputs/paper_results/vectors.json` - Extracted vectors
-- `outputs/paper_results/layer_sweep.csv` - Probe accuracy per layer
-- `outputs/paper_results/steering_sweep.csv` - KL and loss per strength
-- `outputs/paper_results/baseline_comparison.csv` - Steering vs prompting
-- `outputs/paper_results/figures/*.png` - Layer sweep and steering plots
-- `outputs/paper_results/RESULTS_SUMMARY.md` - Markdown report with LaTeX snippets
+Each run writes into its own directory:
+
+- `manifest.json` - commit, working-tree cleanliness, seed, dataset SHA-256
+  and installed package versions. Read this first: it says whether a rerun is
+  comparable.
+- `layer_sweep.csv` - balanced accuracy, p-value and class balance per layer
+- `steering_sweep.csv` - KL and loss per strength
+- `baseline_comparison.csv` - steering against prompting
+- `crosslingual_alignment.csv` - aligned and mismatched cosines
+- `causal_readback.csv` - amplification against a random control
+- `suppression.csv` - subtraction against a random control
+- `generations/*.json` - the text each condition produced
+- `README.md` - the human-readable report
 
 ### Workflow: Results to Paper
 
-1. Run the script: `python scripts/generate_paper_results.py --concepts wasta_001,muruah_001,diyafa_001`
-2. Open `outputs/paper_results/RESULTS_SUMMARY.md`
-3. Search for `\todo` markers in `docs/research_paper/main.tex`
-4. Copy the LaTeX-ready tables from the Markdown into the corresponding `\todo` locations
-5. Replace placeholder figures with `figures/layer_sweep.png` and `figures/effect_vs_cost.png`
+1. Run the pipeline into a fresh directory under `results/`.
+2. Read that run's `README.md`, which carries the limitations next to the
+   numbers they qualify.
+3. Commit the artefacts. `tests/test_readme_numbers.py` requires the
+   top-level README's summary table to agree with them, so a run that moves a
+   number fails the suite until the summary is updated with it.
 6. Rebuild: `cd docs/research_paper && ./build.sh`
 
 ## Dataset Schema
