@@ -37,7 +37,7 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from src.data.dataset_builder import load_concepts  # noqa: E402
+from src.data.dataset_builder import load_concepts, review_summary  # noqa: E402
 from src.models.rep_engine import EVALUATION_PROMPTS, CulturalRepE  # noqa: E402
 from src.utils.baselines import compare_steering_vs_prompting  # noqa: E402
 from src.utils.causal import (  # noqa: E402
@@ -576,6 +576,7 @@ def write_report(
     Returns:
         The path written.
     """
+    review = review_summary(load_concepts(manifest["dataset"]["path"]))
     model = manifest["model"]["name"]
     commit = manifest["git"]["commit"][:12]
     dirty = " (uncommitted code changes)" if manifest["git"]["dirty"] else ""
@@ -872,8 +873,15 @@ def write_report(
             "  method, not evidence that the direction is the cultural concept",
             "  a person would name, and not evidence that it survives the whole",
             "  stack.",
-            "- Most of the concept entries are still awaiting native-speaker",
-            "  review (`review_status` in the dataset).",
+            f"- {review['reviewed']} of {review['total']} concept entries carry a",
+            "  named native-speaker review. Until that number is the whole set,",
+            "  nothing here is a claim about Arab cultural concepts - only about",
+            "  this pipeline and these models.",
+            "- The exemplars and contrasts share little vocabulary, so the",
+            '  "minimal pairs" are not very minimal. Extraction subtracts one',
+            "  mean from the other, so whatever is unique to one side survives:",
+            "  a probe may be separating subject matter rather than the concept.",
+            "  `python scripts/check_dataset.py` prints the overlap per entry.",
             "- A model with little Arabic capability can only validate that the",
             "  pipeline measures what it claims to; it cannot support a claim",
             "  about Arab cultural concepts.",
