@@ -339,15 +339,25 @@ kind — nothing in this repository reports a measurement it did not make.
 
 | Run | Readable above chance (p < 0.05) | Mean balanced accuracy | Adding beats random | Subtracting beats random |
 | --- | --- | --- | --- | --- |
-| [`gpt2`](results/pilot_gpt2/) (124M, negligible Arabic) | 5 / 12 | 0.681 | 16 / 16 | 16 / 16 |
-| [`Qwen2.5-0.5B`](results/pilot_qwen2.5-0.5b/) (multilingual) | 11 / 12 | 0.883 | 42 / 44 | 36 / 44 |
+| [`gpt2`](results/pilot_gpt2/) (124M, English) | 5 / 12 | 0.681 | 16 / 16 | 16 / 16 |
+| [`gpt2-medium`](results/pilot_gpt2-medium/) (355M, English) | 7 / 12 | 0.706 | 28 / 28 | 24 / 24 |
+| [`Qwen2.5-0.5B`](results/pilot_qwen2.5-0.5b/) (494M, multilingual) | 11 / 12 | 0.883 | 42 / 44 | 36 / 44 |
 
 The causal columns count only the points measured through a reading probe at
 0.70 balanced accuracy or better — a lift through a probe near chance says
-nothing. `gpt2` can only supply sixteen such points; Qwen supplies
-forty-four. The eight subtractions that *fail* in Qwen are left in the table
+nothing, so a model whose probes are weak contributes few points: `gpt2`
+supplies sixteen, `gpt2-medium` twenty-eight, Qwen forty-four. The eight subtractions that *fail* in Qwen are left in the table
 rather than filtered out: subtraction is not uniformly reversible even where
 addition works, and that asymmetry is what the check exists to surface.
+
+**`gpt2-medium` is there to separate scale from language coverage**, which the
+first two runs confounded. It is the same family, tokenizer and training
+distribution as `gpt2` with 2.9× the parameters, so the step from `gpt2` to it
+holds language fixed. That step buys +0.025 mean balanced accuracy. The step
+from it to a multilingual model of comparable size — 1.4× the parameters —
+buys +0.177. Scale within English does something; most of the gap is the
+language the model was trained on. That is a three-point comparison on twelve
+concepts, not a scaling law.
 
 Every figure above is asserted against the committed CSVs by
 `tests/test_readme_numbers.py`, so the table cannot drift from the artefacts

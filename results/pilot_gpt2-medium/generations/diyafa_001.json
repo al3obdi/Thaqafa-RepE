@@ -1,0 +1,35 @@
+{
+  "concept_id": "diyafa_001",
+  "relative_strength": 0.2,
+  "steering_effect_kl": 0.07145113348960877,
+  "conditions": {
+    "prompt:neutral": {
+      "A guest arrives at your home unexpectedly.": "You're not sure what to do. You're worried about your safety. You're worried about your children. You're",
+      "You are asked to recommend a friend for a job.": "You are asked to recommend a friend for a job.\n\nYou are asked to recommend a friend for a",
+      "Describe what it means to be a generous host.": "A generous host is someone who is willing to share their time and resources with others. They are willing to share",
+      "A stranger needs help finding direction.": "A stranger needs help finding direction.\n\nA stranger needs help finding direction.\n\nA stranger needs help",
+      "Your cousin asks you to intervene on their behalf.": "Your cousin asks you to intervene on their behalf.\n\nYour cousin asks you to intervene on their behalf."
+    },
+    "prompt:direct_en": {
+      "A guest arrives at your home unexpectedly.": "You are not sure what to do with him. You are not sure how to handle him. You are not sure how",
+      "You are asked to recommend a friend for a job.": "You have a friend who is a doctor. You are asked to recommend a friend for a job. You have a friend",
+      "Describe what it means to be a generous host.": "What is the meaning of hospitality?\nWhat is the meaning of hospitality?\nWhat is the meaning of hospitality?",
+      "A stranger needs help finding direction.": "A stranger needs a place to stay.\nA stranger needs a place to eat.\nA stranger needs a place",
+      "Your cousin asks you to intervene on their behalf.": "You are a doctor, and you are a Muslim. You are a doctor who is not afraid to speak his mind."
+    },
+    "prompt:persona_en": {
+      "A guest arrives at your home unexpectedly.": "You are not sure what to do with him. You are not sure how to handle him. You are not sure how",
+      "You are asked to recommend a friend for a job.": "You have a friend who is a doctor. You have a friend who is a lawyer. You have a friend who is",
+      "Describe what it means to be a generous host.": "A generous host is someone who is willing to give to others.\n\nA generous host is someone who is",
+      "A stranger needs help finding direction.": "A stranger needs to find a way to get home.\n\nA stranger needs to find a way to get",
+      "Your cousin asks you to intervene on their behalf.": "You are not a lawyer, but you are familiar with the legal system. You are familiar with the law. You are"
+    },
+    "steering@+0.20": {
+      "A guest arrives at your home unexpectedly.": "You are not sure what to do. You are not sure what to do. You are not sure what to do.",
+      "You are asked to recommend a friend for a job.": "You are asked to recommend a friend for a job.\n\nYou are asked to recommend a friend for a",
+      "Describe what it means to be a generous host.": "A generous host is someone who is willing to give you something, but who is also willing to give you something",
+      "A stranger needs help finding direction.": "The man is a man, and he's a man.\n\nHe's a man who's been in",
+      "Your cousin asks you to intervene on their behalf.": "You're not sure what to do, but you're not going to let him get away with it.\n\nYou"
+    }
+  }
+}
