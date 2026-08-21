@@ -22,12 +22,15 @@ model before it is evidence about the concept.
 from __future__ import annotations
 
 import logging
+from collections.abc import Sequence
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 import torch
 
+from src.data.contrastive import neutral_prompt_bank
 from src.data.dataset_builder import CulturalConcept, load_concepts
+from src.utils.probes import DEFAULT_SEED
 
 if TYPE_CHECKING:  # pragma: no cover - imported for type checking only
     from src.models.rep_engine import CulturalRepE
@@ -260,3 +263,269 @@ def summarize_alignment(results: dict[str, AlignmentResult]) -> list[dict[str, f
         for result in results.values()
     ]
     return sorted(rows, key=lambda row: float(row["separation"]), reverse=True)
+
+
+@dataclass(frozen=True)
+class TransferResult:
+    """Whether one language's direction steers the other language's reader.
+
+    :func:`alignment` asks a geometric question - do the two directions point
+    the same way - and answers it with a cosine. This asks the behavioural one:
+    inject the Arabic direction and see whether a probe trained on English
+    exemplars notices. The two can disagree. A cosine of 0.2 between vectors in
+    a 768-dimensional space still leaves a large shared component, and a probe
+    reads a projection, not an angle.
+
+    Every rate needs two references to be read. The **random** arm is the floor:
+    any large perturbation moves a probe. The **same-language** arm is the
+    ceiling: it is the best this reader could do with a direction extracted from
+    its own exemplars, so it says how much of the effect was ever available to
+    transfer.
+
+    Attributes:
+        concept: Concept identifier.
+        reader_language: Language whose exemplars trained the reading probe.
+        inject_layer: Layer the direction was added to.
+        read_layer: Layer the probe read from, strictly deeper.
+        strength: Injection coefficient, as a fraction of the residual norm.
+        probe_accuracy: Cross-validated balanced accuracy of the reading probe.
+            A transfer measured through a probe near 0.5 says nothing.
+        baseline_rate: Positive rate with no steering.
+        same_language_rate: Positive rate with the reader's own language
+            direction injected.
+        other_language_rate: Positive rate with the *other* language's
+            direction injected. This is the transfer.
+        random_rates: Positive rate under each matched-norm random direction.
+        n_prompts: Neutral prompts behind every rate, in the reader's language.
+    """
+
+    concept: str
+    reader_language: str
+    inject_layer: int
+    read_layer: int
+    strength: float
+    probe_accuracy: float
+    baseline_rate: float
+    same_language_rate: float
+    other_language_rate: float
+    random_rates: list[float] = field(default_factory=list)
+    n_prompts: int = 0
+
+    @property
+    def mean_random_rate(self) -> float:
+        """Average positive rate across the random control directions."""
+        if not self.random_rates:
+            return self.baseline_rate
+        return float(sum(self.random_rates) / len(self.random_rates))
+
+    @property
+    def same_language_lift(self) -> float:
+        """The ceiling: what the reader's own language direction achieved."""
+        return self.same_language_rate - self.mean_random_rate
+
+    @property
+    def transfer_lift(self) -> float:
+        """What the other language's direction achieved, over the same floor."""
+        return self.other_language_rate - self.mean_random_rate
+
+    @property
+    def transfer_ratio(self) -> float:
+        """Transfer as a fraction of what was available to transfer.
+
+        1.0 means the other language's direction moved this reader exactly as
+        far as its own did; 0.0 means it did no better than noise. Returns 0.0
+        when the ceiling is not positive, because a concept whose own direction
+        does not move its own reader has nothing to transfer and a ratio there
+        would divide by a number that means nothing.
+        """
+        if self.same_language_lift <= 0:
+            return 0.0
+        return self.transfer_lift / self.same_language_lift
+
+
+def transfer(
+    engine: CulturalRepE,
+    concept: str,
+    inject_layer: int,
+    read_layer: int,
+    reader_language: str = ENGLISH,
+    strengths: Sequence[float] = (0.02, 0.05, 0.10, 0.20),
+    strength_mode: str = "relative",
+    n_random: int = 3,
+    seed: int = DEFAULT_SEED,
+) -> list[TransferResult]:
+    """Steer with one language's direction and read with the other's probe.
+
+    Both the probe and the prompts come from ``reader_language``, so nothing in
+    the measurement is bilingual except the injected direction. A rise in the
+    probe's positive rate therefore cannot be the reader recognising Arabic
+    text - it never sees any.
+
+    Args:
+        engine: Engine with a loaded model.
+        concept: Concept identifier.
+        inject_layer: Layer to add the direction to.
+        read_layer: Layer to probe, strictly deeper than ``inject_layer``.
+        reader_language: ``"en"`` or ``"ar"``. The other language supplies the
+            transferred direction.
+        strengths: Injection coefficients to sweep. All are reported: the
+            effect saturates, and at a saturated point both arms sit at 1.00
+            so the ratio reads 1.00 for free. A grid shows whether the
+            transfer holds where there is still room to move.
+        strength_mode: ``"relative"`` or ``"absolute"``.
+        n_random: Matched-norm random control directions.
+        seed: Seed for the probe, its folds and the controls.
+
+    Returns:
+        One result per strength, in the order given. The probe and both
+        directions are built once and shared, so the points differ only in
+        the coefficient.
+
+    Raises:
+        ValueError: If the layers are not ordered, the language is unknown, or
+            the concept lacks exemplars in either language.
+        RuntimeError: If the model has not been loaded.
+    """
+    from src.data.contrastive import build_contrast_examples
+    from src.utils.causal import _rate_under, random_directions
+    from src.utils.probes import LinearProbe
+
+    if reader_language not in LANGUAGES:
+        raise ValueError(f"reader_language must be one of {LANGUAGES}, got {reader_language!r}")
+    if read_layer <= inject_layer:
+        raise ValueError(
+            f"read_layer must be deeper than inject_layer, got "
+            f"read={read_layer} inject={inject_layer}."
+        )
+
+    engine._require_model()
+    entry = _entry(engine, concept)
+    other_language = ENGLISH if reader_language == ARABIC else ARABIC
+
+    reader_positives = entry.examples_ar if reader_language == ARABIC else entry.examples_en
+    reader_contrasts = entry.contrast_ar if reader_language == ARABIC else entry.contrast_en
+    if not reader_positives:
+        raise ValueError(f"Concept {concept!r} has no {reader_language} exemplars")
+
+    # The reader is trained and tested entirely within its own language.
+    positives = list(reader_positives)
+    negatives = build_contrast_examples(positives, list(reader_contrasts) or None)
+    features = torch.cat(
+        [
+            engine.collect_activations(positives, read_layer),
+            engine.collect_activations(negatives, read_layer),
+        ],
+        dim=0,
+    )
+    labels = [1] * len(positives) + [0] * len(negatives)
+    probe = LinearProbe(seed=seed)
+    accuracy, _, _ = probe.cross_val_accuracy(features, labels)
+    probe.fit(features, labels)
+
+    prompts = neutral_prompt_bank(reader_language)  # type: ignore[arg-type]
+    same = language_direction(engine, concept, reader_language, inject_layer)
+    other = language_direction(engine, concept, other_language, inject_layer)
+    d_model = int(engine.model.cfg.d_model)  # type: ignore[union-attr]
+    controls = random_directions(d_model, n_random, seed) if n_random > 0 else []
+    baseline = _positive_rate_via(engine, probe, prompts, read_layer)
+
+    results: list[TransferResult] = []
+    for strength in strengths:
+
+        def rate(direction: torch.Tensor, coefficient: float = strength) -> float:
+            """Positive rate under one injected direction at this strength."""
+            return _rate_under(
+                engine,
+                direction,
+                probe,
+                prompts,
+                inject_layer=inject_layer,
+                read_layer=read_layer,
+                strength=coefficient,
+                strength_mode=strength_mode,
+            )
+
+        result = TransferResult(
+            concept=concept,
+            reader_language=reader_language,
+            inject_layer=inject_layer,
+            read_layer=read_layer,
+            strength=strength,
+            probe_accuracy=accuracy,
+            baseline_rate=baseline,
+            same_language_rate=rate(same),
+            other_language_rate=rate(other),
+            random_rates=[rate(control) for control in controls],
+            n_prompts=len(prompts),
+        )
+        results.append(result)
+        logger.info(
+            "%s read by %s at L%d s=%.2f: baseline %.2f own %.2f other %.2f "
+            "random %.2f (ratio %.2f, probe %.3f)",
+            concept,
+            reader_language,
+            read_layer,
+            strength,
+            result.baseline_rate,
+            result.same_language_rate,
+            result.other_language_rate,
+            result.mean_random_rate,
+            result.transfer_ratio,
+            result.probe_accuracy,
+        )
+    return results
+
+
+def _positive_rate_via(
+    engine: CulturalRepE,
+    probe: Any,
+    prompts: list[str],
+    read_layer: int,
+) -> float:
+    """Unsteered positive rate, for the baseline arm.
+
+    Args:
+        engine: Engine with a loaded model.
+        probe: A fitted probe.
+        prompts: Texts to score.
+        read_layer: Layer to read activations from.
+
+    Returns:
+        The share of prompts the probe calls positive.
+    """
+    from src.utils.causal import _positive_rate
+
+    return _positive_rate(probe, engine.collect_activations(prompts, read_layer))
+
+
+def summarize_transfer(results: dict[str, TransferResult]) -> list[dict[str, float | int | str]]:
+    """Flatten transfer results into rows for a table or CSV.
+
+    Args:
+        results: Mapping from a key to its result.
+
+    Returns:
+        One row per result, ordered by descending transfer ratio, so the
+        concepts whose direction carries furthest across languages come first.
+    """
+    rows: list[dict[str, float | int | str]] = [
+        {
+            "concept_id": result.concept,
+            "reader_language": result.reader_language,
+            "inject_layer": result.inject_layer,
+            "read_layer": result.read_layer,
+            "strength": result.strength,
+            "probe_accuracy": round(result.probe_accuracy, 6),
+            "baseline_rate": round(result.baseline_rate, 6),
+            "same_language_rate": round(result.same_language_rate, 6),
+            "other_language_rate": round(result.other_language_rate, 6),
+            "mean_random_rate": round(result.mean_random_rate, 6),
+            "same_language_lift": round(result.same_language_lift, 6),
+            "transfer_lift": round(result.transfer_lift, 6),
+            "transfer_ratio": round(result.transfer_ratio, 6),
+            "n_random": len(result.random_rates),
+            "n_prompts": result.n_prompts,
+        }
+        for result in results.values()
+    ]
+    return sorted(rows, key=lambda row: float(row["transfer_ratio"]), reverse=True)

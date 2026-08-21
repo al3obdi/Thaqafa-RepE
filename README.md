@@ -380,7 +380,10 @@ compares steering with prompt-engineering baselines, checks whether a concept's
 Arabic-only and English-only directions agree, asks whether steering with a
 concept's direction makes that concept's own probe fire on neutral prompts, and
 asks the mirror question: whether *subtracting* the direction stops that probe
-recognising the concept's own held-out exemplars.
+recognising the concept's own held-out exemplars — and finally whether the
+Arabic-only direction steers a probe trained entirely on English, which is the
+behavioural version of the cross-lingual question the cosine only answers
+geometrically.
 
 Each of those last two carries a control, because the headline number alone
 would be uninterpretable: two directions at one layer can be similar for
@@ -419,8 +422,8 @@ Thaqafa-RepE/
 │   ├── models/rep_engine.py       # CulturalRepE: extraction and injection
 │   ├── utils/baselines.py         # Prompt-engineering comparison conditions
 │   ├── utils/evaluation.py        # Strength and layer sweeps, effect vs cost
-│   ├── utils/causal.py            # Read-back: does steering write what probes read
-│   ├── utils/crosslingual.py      # Arabic/English direction agreement
+│   ├── utils/causal.py            # Read-back and suppression, each vs a random control
+│   ├── utils/crosslingual.py      # Arabic/English agreement, and steering transfer
 │   ├── utils/probes.py            # Cross-validated linear probes per layer
 │   ├── utils/provenance.py        # Run manifests: commit, seed, dataset hash
 │   └── utils/visualization.py     # Layer sweeps, similarity heatmaps

@@ -46,7 +46,12 @@ from src.utils.causal import (  # noqa: E402
     summarize_suppression,
     suppression,
 )
-from src.utils.crosslingual import alignment, summarize_alignment  # noqa: E402
+from src.utils.crosslingual import (  # noqa: E402
+    alignment,
+    summarize_alignment,
+    summarize_transfer,
+    transfer,
+)
 from src.utils.evaluation import evaluate_steering  # noqa: E402
 from src.utils.probes import (  # noqa: E402
     DEFAULT_N_PERMUTATIONS,
@@ -473,6 +478,66 @@ def run_suppression(
     return rows
 
 
+def run_transfer(
+    engine: CulturalRepE,
+    concept_ids: list[str],
+    best_layers: dict[str, int],
+    strengths: tuple[float, ...] = DEFAULT_READBACK_STRENGTHS,
+    n_random: int = DEFAULT_N_RANDOM_CONTROLS,
+    seed: int = DEFAULT_SEED,
+) -> list[dict[str, Any]]:
+    """Ask whether one language's direction steers the other language's reader.
+
+    The alignment check answers the geometric question with a cosine. This
+    answers the behavioural one, at the same layer pair the other causal checks
+    use, so the three can be read side by side.
+
+    Args:
+        engine: Engine with a loaded model.
+        concept_ids: Concepts to check. Those lacking exemplars in either
+            language are skipped, since the check needs both.
+        best_layers: Per-concept best probe layer, used as the read layer.
+        strengths: Norm-relative coefficients, all reported.
+        n_random: Matched-norm control directions per point.
+        seed: Seed for the probes and the controls.
+
+    Returns:
+        Rows ready for CSV, one per concept, reader language and strength.
+    """
+    rows: list[dict[str, Any]] = []
+    entries = {entry.concept_id: entry for entry in load_concepts(engine.dataset_path)}
+
+    for concept_id in concept_ids:
+        read_layer = best_layers[concept_id]
+        inject_layer = read_layer - 1
+        entry = entries[concept_id]
+        if inject_layer < 0:
+            logger.warning("skipping transfer for %s: its best layer is 0", concept_id)
+            continue
+        if not entry.examples_ar or not entry.examples_en:
+            logger.warning("skipping transfer for %s: needs both languages", concept_id)
+            continue
+
+        for reader_language in ("en", "ar"):
+            results = {
+                f"{concept_id}@{reader_language}@{result.strength}": result
+                for result in transfer(
+                    engine,
+                    concept_id,
+                    inject_layer=inject_layer,
+                    read_layer=read_layer,
+                    reader_language=reader_language,
+                    strengths=strengths,
+                    strength_mode="relative",
+                    n_random=n_random,
+                    seed=seed,
+                )
+            }
+            rows.extend(dict(row) for row in summarize_transfer(results))
+
+    return rows
+
+
 def write_report(
     output_dir: Path,
     manifest: dict[str, Any],
@@ -484,6 +549,7 @@ def write_report(
     permutations: int = DEFAULT_N_PERMUTATIONS,
     readback_rows: list[dict[str, Any]] | None = None,
     suppression_rows: list[dict[str, Any]] | None = None,
+    transfer_rows: list[dict[str, Any]] | None = None,
 ) -> Path:
     """Write the human-readable summary of a pilot run.
 
@@ -505,6 +571,7 @@ def write_report(
         readback_rows: Causal read-back rows. Omit or pass an empty list when
             the check did not run.
         suppression_rows: Suppression rows, same convention.
+        transfer_rows: Cross-lingual transfer rows, same convention.
 
     Returns:
         The path written.
@@ -739,6 +806,44 @@ def write_report(
                 f"{float(row['drop_beyond_random']):+.2f} |"
             )
 
+    if transfer_rows:
+        lines.extend(
+            [
+                "",
+                "## 7. Does one language's direction steer the other's reader?",
+                "",
+                "Section 4 asks the geometric question and answers it with a",
+                "cosine. This asks the behavioural one, which can disagree: a",
+                "modest cosine in a high-dimensional space still leaves a large",
+                "shared component, and a probe reads a projection, not an angle.",
+                "",
+                "The probe and the prompts both come from `read`, so nothing in",
+                "the measurement is bilingual except the injected direction. A",
+                "rise cannot be the reader recognising the other script - it",
+                "never sees any.",
+                "",
+                "`own` is the ceiling: what the reader's own language direction",
+                "achieved over the random floor. `other` is the transfer.",
+                "`ratio` is the second as a fraction of the first, so 1.00 means",
+                "the other language's direction moved this reader exactly as far",
+                "as its own did. Rates saturate, and at a saturated point both",
+                "arms sit at 1.00 and the ratio reads 1.00 for free - which is",
+                "why every strength is here.",
+                "",
+                "| Concept | Read | Probe | Strength | Own lift | Transfer lift | Ratio |",
+                "|---|---|---|---|---|---|---|",
+            ]
+        )
+        for row in transfer_rows:
+            lines.append(
+                f"| `{row['concept_id']}` | {row['reader_language']} | "
+                f"{float(row['probe_accuracy']):.2f} | "
+                f"{float(row['strength']):.2f} | "
+                f"{float(row['same_language_lift']):+.2f} | "
+                f"{float(row['transfer_lift']):+.2f} | "
+                f"{float(row['transfer_ratio']):.2f} |"
+            )
+
     lines.extend(
         [
             "",
@@ -756,6 +861,11 @@ def write_report(
             "- A small p-value says the labelling is unlikely to be unrelated to",
             "  the activations. It does not say the probe found the concept",
             "  rather than a word the exemplars happen to share.",
+            "- The transfer check reads a projection, not a meaning. It shows",
+            "  one language's direction moving the other language's probe; that",
+            "  probe was trained on twelve exemplars of the same concept, so a",
+            "  high ratio says the two directions share what that probe reads,",
+            "  not that the model holds one cultural concept across languages.",
             "- The read-back shows a written direction reaching the probe that",
             "  reads it, across one transformer block. Both sides come from the",
             "  same twelve exemplars, so it is a consistency check on the",
@@ -824,7 +934,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument(
         "--no-readback",
         action="store_true",
-        help="Skip the causal read-back and suppression checks.",
+        help="Skip the causal read-back, suppression and transfer checks.",
     )
     parser.add_argument(
         "--permutations",
@@ -887,6 +997,7 @@ def main(argv: list[str] | None = None) -> int:
             "readback_strengths": list(DEFAULT_READBACK_STRENGTHS),
             "suppression_strengths": list(DEFAULT_SUPPRESSION_STRENGTHS),
             "readback_random_controls": DEFAULT_N_RANDOM_CONTROLS,
+            "transfer_strengths": list(DEFAULT_READBACK_STRENGTHS),
             "evaluation_prompts": list(EVALUATION_PROMPTS),
         },
     )
@@ -1015,6 +1126,32 @@ def main(argv: list[str] | None = None) -> int:
                 suppression_rows,
             )
 
+    transfer_rows: list[dict[str, Any]] = []
+    if not args.no_readback:
+        transfer_rows = run_transfer(engine, concept_ids, best_layers, seed=args.seed)
+        if transfer_rows:
+            _write_csv(
+                output_dir / "crosslingual_transfer.csv",
+                [
+                    "concept_id",
+                    "reader_language",
+                    "inject_layer",
+                    "read_layer",
+                    "strength",
+                    "probe_accuracy",
+                    "baseline_rate",
+                    "same_language_rate",
+                    "other_language_rate",
+                    "mean_random_rate",
+                    "same_language_lift",
+                    "transfer_lift",
+                    "transfer_ratio",
+                    "n_random",
+                    "n_prompts",
+                ],
+                transfer_rows,
+            )
+
     write_report(
         output_dir,
         manifest,
@@ -1026,6 +1163,7 @@ def main(argv: list[str] | None = None) -> int:
         args.permutations,
         readback_rows,
         suppression_rows,
+        transfer_rows,
     )
     logger.info("pilot complete: %s", output_dir)
     return 0
