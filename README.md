@@ -377,6 +377,30 @@ Every figure above is asserted against the committed CSVs by
 `tests/test_readme_numbers.py`, so the table cannot drift from the artefacts
 it summarises.
 
+### The largest caveat on the readability column
+
+The exemplars and their contrasts share very little vocabulary — 0–18% in
+Arabic, by `scripts/check_dataset.py`. Extraction subtracts one mean from the
+other, so what the two sets share cancels and what is unique to one side
+survives. Pairs this loose mean a probe may be separating **subject matter**
+rather than the concept.
+
+Across the twelve concepts, tighter pairs score *worse*: the correlation
+between Arabic vocabulary overlap and Qwen probe accuracy is **−0.61**.
+`wasta_001` has by far the tightest pair (18%, against 0–5% for everything
+else) and is the only concept that fails to reach significance. That is twelve
+points and a correlation, not a demonstration — but it points the same way the
+mechanism predicts, and it is the first thing native-speaker review should fix.
+
+The causal results are less exposed to this: they inject a direction and read
+it back against a matched-norm random control, so a direction that is mostly
+topic still has to beat noise on the concept's own probe. But the probe it is
+read by was trained on the same loose pairs.
+
+Run `python scripts/build_review_sheet.py` to generate
+[`docs/review_sheet.md`](docs/review_sheet.md), which lays each concept out for
+a native speaker with the specific question to answer beside each block.
+
 The last column counts only the read-back points measured through a probe that
 can actually read its concept (balanced accuracy ≥ 0.70); the rest are reported
 in the CSV but should be discarded, and each run's report says so.
@@ -426,6 +450,8 @@ Thaqafa-RepE/
 │   └── 03_concept_injection.ipynb # Steer generation, sweep strengths
 ├── scripts/                       # Reproducible CLI entry points
 │   ├── run_pilot.py               # Full experiment: probe, steer, baseline
+│   ├── build_review_sheet.py      # Lay concepts out for native-speaker review
+│   ├── check_dataset.py           # Warnings: pairs that are not minimal
 │   ├── extract_vectors.py
 │   ├── inject_concepts.py
 │   └── evaluate.py

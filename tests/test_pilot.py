@@ -427,7 +427,7 @@ class TestWriteReport:
             "git": {"commit": "abcdef0123456789", "branch": "main", "dirty": False},
             "timestamp_utc": "2026-01-01T00:00:00+00:00",
             "seed": 42,
-            "dataset": {"sha256": "0" * 64},
+            "dataset": {"sha256": "0" * 64, "path": str(DATASET_PATH)},
         }
 
     def _rows(self) -> tuple[list[dict[str, Any]], dict[str, int], list[dict[str, Any]]]:
@@ -498,6 +498,30 @@ class TestWriteReport:
         text = path.read_text(encoding="utf-8")
         assert "Limitations" in text
         assert "native-speaker" in text
+
+    def test_the_review_caveat_is_counted_not_asserted(self, tmp_path: Path) -> None:
+        """A hand-written "most entries are unreviewed" goes stale on the first
+        approval, and then quietly understates the dataset for good."""
+        from src.data.dataset_builder import load_concepts, review_summary
+
+        layer_rows, best, steering_rows = self._rows()
+        path = run_pilot.write_report(
+            tmp_path, self._manifest(), layer_rows, best, steering_rows, []
+        )
+        counts = review_summary(load_concepts(DATASET_PATH))
+
+        assert f"{counts['reviewed']} of {counts['total']}" in path.read_text(encoding="utf-8")
+
+    def test_names_the_minimal_pair_confound(self, tmp_path: Path) -> None:
+        """The probe scores are partly separating topic; that has to travel."""
+        layer_rows, best, steering_rows = self._rows()
+        path = run_pilot.write_report(
+            tmp_path, self._manifest(), layer_rows, best, steering_rows, []
+        )
+        text = path.read_text(encoding="utf-8")
+
+        assert "not very minimal" in text
+        assert "check_dataset.py" in text
 
     def test_says_the_layer_was_chosen_on_the_same_data(self, tmp_path: Path) -> None:
         """Best-of-twelve selection makes an uncorrected p-value optimistic."""

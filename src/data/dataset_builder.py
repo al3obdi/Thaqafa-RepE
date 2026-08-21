@@ -73,6 +73,16 @@ class CulturalConcept:
             ``"pending_native_review"`` means it was drafted (by anyone,
             human or machine) and still needs that approval. Results built on
             unreviewed entries should say so.
+        reviewed_by: Who approved the entry. Required whenever
+            :attr:`review_status` is ``"reviewed"`` - a claim that a native
+            speaker checked something, with nobody named, is a claim nobody
+            can follow up or correct.
+        reviewed_at: ISO-8601 date of that approval, ``YYYY-MM-DD``. Also
+            required for a reviewed entry: the exemplars change, and a
+            approval that does not say what it approved goes stale silently.
+        review_notes: Anything the reviewer wanted recorded - a dialect
+            caveat, a contested reading, a sentence they kept but disliked.
+            Optional, and worth more than the status flag when present.
     """
 
     concept_id: str
@@ -88,6 +98,9 @@ class CulturalConcept:
     sentiment: str = "mixed"
     dialect: str = "MSA"
     review_status: str = "pending_native_review"
+    reviewed_by: str = ""
+    reviewed_at: str = ""
+    review_notes: str = ""
 
     @classmethod
     def from_dict(cls, record: dict[str, object]) -> CulturalConcept:
@@ -120,6 +133,9 @@ class CulturalConcept:
             sentiment=str(record.get("sentiment", "mixed")),
             dialect=str(record.get("dialect", "MSA")),
             review_status=str(record.get("review_status", "pending_native_review")),
+            reviewed_by=str(record.get("reviewed_by", "")),
+            reviewed_at=str(record.get("reviewed_at", "")),
+            review_notes=str(record.get("review_notes", "")),
         )
 
     @property
@@ -135,6 +151,39 @@ class CulturalConcept:
         extraction falls back to the generated neutral bank.
         """
         return [*self.contrast_ar, *self.contrast_en]
+
+    @property
+    def is_reviewed(self) -> bool:
+        """Whether a named native speaker has approved this entry on a date.
+
+        The status string alone is not enough. An entry that claims review
+        without saying who or when cannot be followed up, corrected, or
+        checked against the exemplars it approved, so it does not count as
+        reviewed here however its ``review_status`` reads.
+        """
+        return bool(
+            self.review_status == "reviewed"
+            and self.reviewed_by.strip()
+            and self.reviewed_at.strip()
+        )
+
+
+def review_summary(concepts: list[CulturalConcept]) -> dict[str, int]:
+    """Count how much of a dataset has been through native-speaker review.
+
+    Reports are expected to carry this next to their numbers rather than a
+    hand-written sentence, which goes stale the moment one entry is approved.
+
+    Args:
+        concepts: The dataset to summarise.
+
+    Returns:
+        ``{"reviewed": int, "total": int}``.
+    """
+    return {
+        "reviewed": sum(1 for concept in concepts if concept.is_reviewed),
+        "total": len(concepts),
+    }
 
 
 def iter_concepts(path: Path | str = DEFAULT_DATASET_PATH) -> Iterator[CulturalConcept]:

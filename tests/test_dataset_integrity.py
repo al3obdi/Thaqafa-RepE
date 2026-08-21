@@ -126,6 +126,52 @@ class TestControlledVocabularies:
         for c in concepts:
             assert c.review_status in VALID_REVIEW_STATUSES, c.concept_id
 
+    def test_a_reviewed_entry_names_its_reviewer_and_date(
+        self, concepts: list[CulturalConcept]
+    ) -> None:
+        """ "Reviewed" has to be a claim somebody can follow up.
+
+        A status flag with nobody behind it cannot be corrected, and cannot be
+        checked against the exemplars it approved once those change. An entry
+        that claims review without attribution is worse than one that admits
+        it is unreviewed, because it stops anyone looking.
+        """
+        unattributed = [
+            concept.concept_id
+            for concept in concepts
+            if concept.review_status == "reviewed"
+            and not (concept.reviewed_by.strip() and concept.reviewed_at.strip())
+        ]
+
+        assert not unattributed, f"Claim review without a reviewer or date: {unattributed}"
+
+    def test_review_dates_are_iso_formatted(self, concepts: list[CulturalConcept]) -> None:
+        """So a reader can tell whether the approval predates an edit."""
+        import datetime
+
+        malformed = []
+        for concept in concepts:
+            if not concept.reviewed_at.strip():
+                continue
+            try:
+                datetime.date.fromisoformat(concept.reviewed_at)
+            except ValueError:
+                malformed.append(concept.concept_id)
+
+        assert not malformed, f"reviewed_at is not YYYY-MM-DD: {malformed}"
+
+    def test_an_unreviewed_entry_does_not_claim_a_reviewer(
+        self, concepts: list[CulturalConcept]
+    ) -> None:
+        """Leftover attribution on a reverted entry would read as approval."""
+        contradictory = [
+            concept.concept_id
+            for concept in concepts
+            if concept.review_status != "reviewed" and concept.reviewed_by.strip()
+        ]
+
+        assert not contradictory, f"Names a reviewer but is not reviewed: {contradictory}"
+
     def test_contested_concepts_stay_mixed(self, concepts: list[CulturalConcept]) -> None:
         # Wasta is normatively contested by the project's own documentation;
         # flattering it into "positive" (or damning it to "negative") is a
