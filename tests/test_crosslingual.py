@@ -14,21 +14,55 @@ from typing import Any
 import pytest
 import torch
 
+from src.data.contrastive import neutral_prompt_bank
 from src.data.dataset_builder import load_concepts
 from src.models.rep_engine import RESID_POST_HOOK, CulturalRepE
 from src.utils.crosslingual import (
     ARABIC,
     ENGLISH,
     AlignmentResult,
+    TransferResult,
     alignment,
     cosine,
     language_direction,
     summarize_alignment,
+    summarize_transfer,
+    transfer,
 )
 from tests.helpers import DATASET_PATH
 
 D_MODEL = 8
 N_LAYERS = 4
+
+
+class _HookPoint:
+    """Stands in for ``transformer_lens.hook_points.HookPoint``."""
+
+    def __init__(self, name: str) -> None:
+        self.name = name
+        self.fwd_hooks: list[_LensHandle] = []
+
+
+class _RemovableHandle:
+    """Stands in for ``torch.utils.hooks.RemovableHandle``."""
+
+    def __init__(self, owner: _HookPoint, entry: _LensHandle) -> None:
+        self._owner = owner
+        self._entry = entry
+
+    def remove(self) -> None:
+        """Detach the hook so the next pass is unsteered."""
+        if self._entry in self._owner.fwd_hooks:
+            self._owner.fwd_hooks.remove(self._entry)
+
+
+class _LensHandle:
+    """Stands in for ``transformer_lens.hook_points.LensHandle``."""
+
+    def __init__(self, user_hook: Any) -> None:
+        self.user_hook = user_hook
+        self.is_permanent = False
+        self.hook: Any = None
 
 
 def _is_arabic(text: str) -> bool:
@@ -70,10 +104,35 @@ class LanguageAwareFake:
         self._exemplars = {
             text for entry in load_concepts(DATASET_PATH) for text in entry.all_examples
         }
+        self.mod_dict: dict[str, _HookPoint] = {
+            RESID_POST_HOOK.format(layer=layer): _HookPoint(RESID_POST_HOOK.format(layer=layer))
+            for layer in range(N_LAYERS)
+        }
 
     def eval(self) -> LanguageAwareFake:
         """Match the ``torch.nn.Module`` interface."""
         return self
+
+    def add_hook(self, name: str, hook: Any, dir: str = "fwd") -> None:  # noqa: A002
+        """Register a hook and hand back a working removal handle.
+
+        The transfer check steers, so the fake has to carry an injection
+        through into what the probe reads; a fake that only answered
+        ``run_with_cache`` would report every steered rate as the unsteered
+        one and make the check pass vacuously.
+        """
+        point = self.mod_dict[name]
+        entry = _LensHandle(hook)
+        entry.hook = _RemovableHandle(point, entry)
+        point.fwd_hooks.append(entry)
+
+    def _injected(self) -> torch.Tensor:
+        """Total offset the attached hooks apply to a zero activation."""
+        total = torch.zeros(D_MODEL)
+        for point in self.mod_dict.values():
+            for entry in point.fwd_hooks:
+                total = total + entry.user_hook(torch.zeros(1, 1, D_MODEL), None)[0, 0]
+        return total
 
     def to_tokens(self, prompts: list[str]) -> torch.Tensor:
         """Record the prompts and return one placeholder token each."""
@@ -101,7 +160,8 @@ class LanguageAwareFake:
     ) -> tuple[None, dict[str, torch.Tensor]]:
         """Return one activation per recorded prompt."""
         name = str(kwargs.get("names_filter") or RESID_POST_HOOK.format(layer=0))
-        stacked = torch.stack([self._vector(prompt) for prompt in self._prompts])
+        injected = self._injected()
+        stacked = torch.stack([self._vector(prompt) + injected for prompt in self._prompts])
         return None, {name: stacked.unsqueeze(1)}
 
 
@@ -299,3 +359,140 @@ class TestAlignmentResultProperties:
         result = AlignmentResult("a", 0, 0.75, {})
         assert result.mean_mismatched == 0.0
         assert result.separation == pytest.approx(0.75)
+
+
+class TestTransfer:
+    """Steering with one language's direction, reading with the other's probe."""
+
+    def test_a_shared_axis_transfers(self) -> None:
+        """The fake encodes the concept on one axis for both languages."""
+        results = transfer(
+            make_engine(), "diyafa_001", 1, 3, reader_language=ENGLISH, strengths=(2.0,)
+        )
+
+        assert len(results) == 1
+        assert results[0].transfer_ratio > 0.8
+
+    def test_both_reader_languages_work(self) -> None:
+        """Transfer is a two-way question and the answer need not be symmetric."""
+        english = transfer(make_engine(), "diyafa_001", 1, 3, ENGLISH, strengths=(2.0,))[0]
+        arabic = transfer(make_engine(), "diyafa_001", 1, 3, ARABIC, strengths=(2.0,))[0]
+
+        assert english.reader_language == ENGLISH
+        assert arabic.reader_language == ARABIC
+
+    def test_reads_only_prompts_in_the_reader_language(self) -> None:
+        """Otherwise a rise could be the probe recognising the other script."""
+        english = transfer(make_engine(), "diyafa_001", 1, 3, ENGLISH, strengths=(2.0,))[0]
+        arabic = transfer(make_engine(), "diyafa_001", 1, 3, ARABIC, strengths=(2.0,))[0]
+
+        assert english.n_prompts > 0
+        assert arabic.n_prompts > 0
+        # The two banks are different sets, so a shared bank would be a bug.
+        assert set(neutral_prompt_bank(ENGLISH)).isdisjoint(neutral_prompt_bank(ARABIC))
+
+    def test_every_strength_is_reported(self) -> None:
+        """A saturated point reads ratio 1.00 for free; the grid shows that."""
+        results = transfer(make_engine(), "diyafa_001", 1, 3, ENGLISH, strengths=(0.5, 1.0, 2.0))
+
+        assert [result.strength for result in results] == [0.5, 1.0, 2.0]
+
+    def test_the_probe_is_shared_across_strengths(self) -> None:
+        """Refitting per point would make the points incomparable."""
+        results = transfer(make_engine(), "diyafa_001", 1, 3, ENGLISH, strengths=(0.5, 1.0, 2.0))
+
+        assert len({result.probe_accuracy for result in results}) == 1
+        assert len({result.baseline_rate for result in results}) == 1
+
+    def test_carries_both_the_floor_and_the_ceiling(self) -> None:
+        """A transfer number without them cannot be read at all."""
+        result = transfer(make_engine(), "diyafa_001", 1, 3, ENGLISH, strengths=(2.0,))[0]
+
+        assert result.random_rates
+        assert result.same_language_rate >= 0.0
+        assert result.probe_accuracy > 0.0
+
+    def test_an_unknown_reader_language_is_rejected(self) -> None:
+        with pytest.raises(ValueError, match="reader_language must be one of"):
+            transfer(make_engine(), "diyafa_001", 1, 3, reader_language="fr")
+
+    def test_reading_at_the_injection_layer_is_rejected(self) -> None:
+        with pytest.raises(ValueError, match="deeper than inject_layer"):
+            transfer(make_engine(), "diyafa_001", 2, 2)
+
+    def test_an_unknown_concept_is_rejected(self) -> None:
+        with pytest.raises(ValueError, match="was not found"):
+            transfer(make_engine(), "not_a_concept_999", 1, 3)
+
+    def test_leaves_no_hooks_or_cache_entries_behind(self) -> None:
+        """A leaked hook would silently steer everything measured afterwards."""
+        engine = make_engine()
+        transfer(engine, "diyafa_001", 1, 3, ENGLISH, strengths=(2.0,))
+
+        assert not any(key.startswith("__") for key in engine.concept_vectors)
+
+
+class TestTransferResultProperties:
+    """The derived numbers."""
+
+    def _result(self, same: float, other: float, random: list[float]) -> TransferResult:
+        """Build a result with the rates under test."""
+        return TransferResult(
+            concept="a",
+            reader_language=ENGLISH,
+            inject_layer=1,
+            read_layer=2,
+            strength=0.2,
+            probe_accuracy=0.8,
+            baseline_rate=0.2,
+            same_language_rate=same,
+            other_language_rate=other,
+            random_rates=random,
+        )
+
+    def test_complete_transfer_is_one(self) -> None:
+        """The other language moved this reader exactly as far as its own did."""
+        assert self._result(0.9, 0.9, [0.1]).transfer_ratio == pytest.approx(1.0)
+
+    def test_no_transfer_is_zero(self) -> None:
+        """The other language did no better than the random floor."""
+        assert self._result(0.9, 0.1, [0.1]).transfer_ratio == pytest.approx(0.0)
+
+    def test_partial_transfer_is_the_fraction(self) -> None:
+        result = self._result(0.9, 0.5, [0.1])
+        assert result.transfer_ratio == pytest.approx(0.5)
+
+    def test_no_ceiling_gives_no_ratio(self) -> None:
+        """A concept whose own direction does not move its own reader has
+        nothing to transfer, and a ratio there would divide by noise."""
+        assert self._result(0.1, 0.4, [0.3]).transfer_ratio == 0.0
+
+    def test_no_control_falls_back_to_the_baseline(self) -> None:
+        result = self._result(0.9, 0.5, [])
+        assert result.mean_random_rate == pytest.approx(0.2)
+
+
+class TestSummarizeTransfer:
+    """Turning results into a table."""
+
+    def test_orders_by_descending_transfer_ratio(self) -> None:
+        low = TransferResult("a", ENGLISH, 1, 2, 0.2, 0.8, 0.1, 0.9, 0.3, [0.1])
+        high = TransferResult("b", ENGLISH, 1, 2, 0.2, 0.8, 0.1, 0.9, 0.9, [0.1])
+
+        rows = summarize_transfer({"a": low, "b": high})
+
+        assert [row["concept_id"] for row in rows] == ["b", "a"]
+
+    def test_carries_the_floor_the_ceiling_and_the_probe(self) -> None:
+        rows = summarize_transfer(
+            {"a": TransferResult("a", ARABIC, 1, 2, 0.2, 0.75, 0.1, 0.9, 0.5, [0.1], 24)}
+        )
+
+        assert rows[0]["reader_language"] == ARABIC
+        assert rows[0]["same_language_rate"] == pytest.approx(0.9)
+        assert rows[0]["mean_random_rate"] == pytest.approx(0.1)
+        assert rows[0]["probe_accuracy"] == pytest.approx(0.75)
+        assert rows[0]["n_prompts"] == 24
+
+    def test_empty_results_give_no_rows(self) -> None:
+        assert summarize_transfer({}) == []

@@ -1,12 +1,13 @@
 {
   "schema_version": "1.0",
   "experiment": "pilot_gpt2-medium",
-  "timestamp_utc": "2026-08-21T06:25:30+00:00",
+  "timestamp_utc": "2026-08-21T15:05:46+00:00",
   "git": {
-    "commit": "b472c7356d325463c343ca5a107ea11b51963bc8",
-    "branch": "feat/scale-control",
+    "commit": "b41bdefe9443a418b4d408cec0454eba7edad217",
+    "branch": "feat/crosslingual-transfer",
     "dirty": false,
-    "untracked": 0
+    "untracked": 0,
+    "output_paths_changed": 7
   },
   "model": {
     "name": "gpt2-medium",
@@ -69,6 +70,12 @@
       -0.2
     ],
     "readback_random_controls": 3,
+    "transfer_strengths": [
+      0.02,
+      0.05,
+      0.1,
+      0.2
+    ],
     "evaluation_prompts": [
       "A guest arrives at your home unexpectedly.",
       "You are asked to recommend a friend for a job.",

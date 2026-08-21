@@ -1,8 +1,8 @@
 # Pilot results: `Qwen/Qwen2.5-0.5B`
 
 - **Model**: `Qwen/Qwen2.5-0.5B` on cpu (float32)
-- **Commit**: `a711616d5415`
-- **Run (UTC)**: 2026-08-20T19:14:44+00:00
+- **Commit**: `b41bdefe9443`
+- **Run (UTC)**: 2026-08-21T16:15:46+00:00
 - **Seed**: 42
 - **Dataset SHA-256**: `52a52e5705f38566...`
 
@@ -367,6 +367,125 @@ direction, not that nothing else changed.
 | `hayaa_001` | 3 | 4 | 0.94 | -0.05 | 1.00 | 0.92 | 1.00 | +0.08 |
 | `hayaa_001` | 3 | 4 | 0.94 | -0.02 | 1.00 | 1.00 | 1.00 | +0.00 |
 
+## 7. Does one language's direction steer the other's reader?
+
+Section 4 asks the geometric question and answers it with a
+cosine. This asks the behavioural one, which can disagree: a
+modest cosine in a high-dimensional space still leaves a large
+shared component, and a probe reads a projection, not an angle.
+
+The probe and the prompts both come from `read`, so nothing in
+the measurement is bilingual except the injected direction. A
+rise cannot be the reader recognising the other script - it
+never sees any.
+
+`own` is the ceiling: what the reader's own language direction
+achieved over the random floor. `other` is the transfer.
+`ratio` is the second as a fraction of the first, so 1.00 means
+the other language's direction moved this reader exactly as far
+as its own did. Rates saturate, and at a saturated point both
+arms sit at 1.00 and the ratio reads 1.00 for free - which is
+why every strength is here.
+
+| Concept | Read | Probe | Strength | Own lift | Transfer lift | Ratio |
+|---|---|---|---|---|---|---|
+| `wasta_001` | en | 0.38 | 0.02 | +0.08 | +0.08 | 1.00 |
+| `wasta_001` | en | 0.38 | 0.05 | +0.11 | +0.11 | 1.00 |
+| `wasta_001` | en | 0.38 | 0.10 | +0.25 | +0.25 | 1.00 |
+| `wasta_001` | en | 0.38 | 0.20 | +0.42 | +0.42 | 1.00 |
+| `wasta_001` | ar | 0.31 | 0.02 | +0.19 | +0.44 | 2.29 |
+| `wasta_001` | ar | 0.31 | 0.05 | +0.58 | +0.67 | 1.14 |
+| `wasta_001` | ar | 0.31 | 0.10 | +0.69 | +0.69 | 1.00 |
+| `wasta_001` | ar | 0.31 | 0.20 | +0.64 | +0.64 | 1.00 |
+| `muruah_001` | en | 1.00 | 0.05 | +0.14 | +0.06 | 0.40 |
+| `muruah_001` | en | 1.00 | 0.10 | +0.11 | +0.03 | 0.25 |
+| `muruah_001` | en | 1.00 | 0.20 | +0.58 | +0.00 | 0.00 |
+| `muruah_001` | en | 1.00 | 0.02 | +0.11 | -0.06 | -0.50 |
+| `muruah_001` | ar | 0.88 | 0.20 | +0.64 | +0.56 | 0.87 |
+| `muruah_001` | ar | 0.88 | 0.10 | +0.53 | +0.44 | 0.84 |
+| `muruah_001` | ar | 0.88 | 0.05 | +0.39 | +0.31 | 0.79 |
+| `muruah_001` | ar | 0.88 | 0.02 | +0.17 | +0.08 | 0.50 |
+| `diyafa_001` | en | 0.69 | 0.02 | +0.31 | +0.31 | 1.00 |
+| `diyafa_001` | en | 0.69 | 0.05 | +0.50 | +0.50 | 1.00 |
+| `diyafa_001` | en | 0.69 | 0.10 | +0.58 | +0.58 | 1.00 |
+| `diyafa_001` | en | 0.69 | 0.20 | +0.67 | +0.67 | 1.00 |
+| `diyafa_001` | ar | 0.75 | 0.05 | +0.44 | +0.44 | 1.00 |
+| `diyafa_001` | ar | 0.75 | 0.10 | +0.39 | +0.39 | 1.00 |
+| `diyafa_001` | ar | 0.75 | 0.20 | +0.58 | +0.58 | 1.00 |
+| `diyafa_001` | ar | 0.75 | 0.02 | +0.50 | +0.42 | 0.83 |
+| `karam_001` | en | 0.69 | 0.20 | +0.64 | +0.56 | 0.87 |
+| `karam_001` | en | 0.69 | 0.10 | +0.31 | +0.22 | 0.73 |
+| `karam_001` | en | 0.69 | 0.05 | +0.17 | +0.08 | 0.50 |
+| `karam_001` | en | 0.69 | 0.02 | +0.00 | +0.00 | 0.00 |
+| `karam_001` | ar | 0.56 | 0.10 | +0.58 | +0.42 | 0.71 |
+| `karam_001` | ar | 0.56 | 0.20 | +0.44 | +0.28 | 0.62 |
+| `karam_001` | ar | 0.56 | 0.05 | +0.56 | +0.14 | 0.25 |
+| `karam_001` | ar | 0.56 | 0.02 | +0.33 | +0.00 | 0.00 |
+| `sharaf_001` | en | 0.62 | 0.20 | +0.92 | +0.92 | 1.00 |
+| `sharaf_001` | en | 0.62 | 0.10 | +0.83 | +0.75 | 0.90 |
+| `sharaf_001` | en | 0.62 | 0.02 | +0.25 | +0.17 | 0.67 |
+| `sharaf_001` | en | 0.62 | 0.05 | +0.72 | +0.47 | 0.65 |
+| `sharaf_001` | ar | 0.94 | 0.20 | +0.36 | +0.36 | 1.00 |
+| `sharaf_001` | ar | 0.94 | 0.10 | +0.42 | +0.25 | 0.60 |
+| `sharaf_001` | ar | 0.94 | 0.05 | +0.44 | +0.19 | 0.44 |
+| `sharaf_001` | ar | 0.94 | 0.02 | +0.25 | +0.00 | 0.00 |
+| `sabr_001` | en | 0.88 | 0.20 | +0.33 | +0.33 | 1.00 |
+| `sabr_001` | en | 0.88 | 0.10 | +0.47 | +0.22 | 0.47 |
+| `sabr_001` | en | 0.88 | 0.05 | +0.56 | +0.14 | 0.25 |
+| `sabr_001` | en | 0.88 | 0.02 | +0.25 | +0.00 | 0.00 |
+| `sabr_001` | ar | 0.75 | 0.02 | +0.11 | +0.11 | 1.00 |
+| `sabr_001` | ar | 0.75 | 0.05 | +0.28 | +0.28 | 1.00 |
+| `sabr_001` | ar | 0.75 | 0.20 | +0.36 | +0.36 | 1.00 |
+| `sabr_001` | ar | 0.75 | 0.10 | +0.33 | +0.17 | 0.50 |
+| `silat_rahim_001` | en | 0.69 | 0.02 | +0.06 | +0.06 | 1.00 |
+| `silat_rahim_001` | en | 0.69 | 0.05 | +0.25 | +0.25 | 1.00 |
+| `silat_rahim_001` | en | 0.69 | 0.10 | +0.56 | +0.56 | 1.00 |
+| `silat_rahim_001` | en | 0.69 | 0.20 | +0.89 | +0.89 | 1.00 |
+| `silat_rahim_001` | ar | 0.62 | 0.02 | +0.44 | +0.03 | 0.06 |
+| `silat_rahim_001` | ar | 0.62 | 0.05 | +0.61 | +0.03 | 0.05 |
+| `silat_rahim_001` | ar | 0.62 | 0.10 | +0.47 | -0.11 | -0.24 |
+| `silat_rahim_001` | ar | 0.62 | 0.20 | +0.36 | -0.31 | -0.85 |
+| `jiwar_001` | en | 0.81 | 0.05 | +0.28 | +0.28 | 1.00 |
+| `jiwar_001` | en | 0.81 | 0.10 | +0.42 | +0.42 | 1.00 |
+| `jiwar_001` | en | 0.81 | 0.20 | +0.42 | +0.42 | 1.00 |
+| `jiwar_001` | en | 0.81 | 0.02 | +0.14 | +0.06 | 0.40 |
+| `jiwar_001` | ar | 0.50 | 0.20 | +0.58 | +0.58 | 1.00 |
+| `jiwar_001` | ar | 0.50 | 0.10 | +0.50 | +0.33 | 0.67 |
+| `jiwar_001` | ar | 0.50 | 0.05 | +0.47 | +0.31 | 0.65 |
+| `jiwar_001` | ar | 0.50 | 0.02 | +0.42 | +0.08 | 0.20 |
+| `shura_001` | en | 0.56 | 0.05 | +0.31 | +0.31 | 1.00 |
+| `shura_001` | en | 0.56 | 0.10 | +0.53 | +0.53 | 1.00 |
+| `shura_001` | en | 0.56 | 0.20 | +0.67 | +0.67 | 1.00 |
+| `shura_001` | en | 0.56 | 0.02 | +0.31 | +0.06 | 0.18 |
+| `shura_001` | ar | 0.69 | 0.02 | +0.06 | +0.06 | 1.00 |
+| `shura_001` | ar | 0.69 | 0.10 | +0.44 | +0.44 | 1.00 |
+| `shura_001` | ar | 0.69 | 0.20 | +0.50 | +0.50 | 1.00 |
+| `shura_001` | ar | 0.69 | 0.05 | +0.25 | +0.17 | 0.67 |
+| `majlis_001` | en | 0.50 | 0.20 | +0.67 | +0.67 | 1.00 |
+| `majlis_001` | en | 0.50 | 0.10 | +0.75 | +0.67 | 0.89 |
+| `majlis_001` | en | 0.50 | 0.05 | +0.72 | +0.47 | 0.65 |
+| `majlis_001` | en | 0.50 | 0.02 | +0.50 | +0.17 | 0.33 |
+| `majlis_001` | ar | 0.50 | 0.10 | +0.42 | +0.42 | 1.00 |
+| `majlis_001` | ar | 0.50 | 0.20 | +0.42 | +0.42 | 1.00 |
+| `majlis_001` | ar | 0.50 | 0.05 | +0.42 | +0.25 | 0.60 |
+| `majlis_001` | ar | 0.50 | 0.02 | +0.17 | +0.08 | 0.50 |
+| `fazaa_001` | en | 1.00 | 0.10 | +0.31 | +0.31 | 1.00 |
+| `fazaa_001` | en | 1.00 | 0.20 | +0.28 | +0.19 | 0.70 |
+| `fazaa_001` | en | 1.00 | 0.05 | +0.14 | -0.03 | -0.20 |
+| `fazaa_001` | en | 1.00 | 0.02 | +0.06 | -0.03 | -0.50 |
+| `fazaa_001` | ar | 1.00 | 0.20 | +0.47 | +0.39 | 0.82 |
+| `fazaa_001` | ar | 1.00 | 0.10 | +0.25 | +0.08 | 0.33 |
+| `fazaa_001` | ar | 1.00 | 0.02 | -0.03 | -0.03 | 0.00 |
+| `fazaa_001` | ar | 1.00 | 0.05 | +0.08 | -0.08 | -1.00 |
+| `hayaa_001` | en | 1.00 | 0.05 | +0.14 | +0.14 | 1.00 |
+| `hayaa_001` | en | 1.00 | 0.20 | +0.89 | +0.56 | 0.62 |
+| `hayaa_001` | en | 1.00 | 0.10 | +0.39 | +0.22 | 0.57 |
+| `hayaa_001` | en | 1.00 | 0.02 | +0.17 | +0.00 | 0.00 |
+| `hayaa_001` | ar | 0.69 | 0.02 | +0.19 | +0.19 | 1.00 |
+| `hayaa_001` | ar | 0.69 | 0.20 | +0.47 | +0.22 | 0.47 |
+| `hayaa_001` | ar | 0.69 | 0.05 | +0.14 | +0.06 | 0.40 |
+| `hayaa_001` | ar | 0.69 | 0.10 | +0.22 | +0.06 | 0.25 |
+
 ## Limitations
 
 - Small exemplar sets mean wide confidence intervals; no claim here
@@ -381,6 +500,11 @@ direction, not that nothing else changed.
 - A small p-value says the labelling is unlikely to be unrelated to
   the activations. It does not say the probe found the concept
   rather than a word the exemplars happen to share.
+- The transfer check reads a projection, not a meaning. It shows
+  one language's direction moving the other language's probe; that
+  probe was trained on twelve exemplars of the same concept, so a
+  high ratio says the two directions share what that probe reads,
+  not that the model holds one cultural concept across languages.
 - The read-back shows a written direction reaching the probe that
   reads it, across one transformer block. Both sides come from the
   same twelve exemplars, so it is a consistency check on the

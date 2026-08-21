@@ -62,6 +62,16 @@ class TestFileDigest:
 class TestGitRevision:
     """The commit is the other half of "what produced this"."""
 
+    @staticmethod
+    def _repo(root: Path) -> None:
+        """Initialise a one-commit repository at *root*."""
+        subprocess.run(["git", "init", "-q", "-b", "trunk"], cwd=root, check=True)
+        subprocess.run(["git", "config", "user.email", "t@example.com"], cwd=root, check=True)
+        subprocess.run(["git", "config", "user.name", "Test"], cwd=root, check=True)
+        (root / "a.txt").write_text("one", encoding="utf-8")
+        subprocess.run(["git", "add", "."], cwd=root, check=True)
+        subprocess.run(["git", "commit", "-qm", "init"], cwd=root, check=True)
+
     def test_reports_commit_branch_and_clean_tree(self, tmp_path: Path) -> None:
         """A fresh repository with one commit reads back cleanly."""
         subprocess.run(["git", "init", "-q", "-b", "trunk"], cwd=tmp_path, check=True)
@@ -111,6 +121,43 @@ class TestGitRevision:
         (tmp_path / "two.py").write_text("y", encoding="utf-8")
 
         assert git_revision(tmp_path).untracked == 2
+
+    def test_rewriting_a_results_file_is_not_a_dirty_tree(self, tmp_path: Path) -> None:
+        """Runs write there. Flagging it would alarm on every sequential run.
+
+        This is the second false alarm this flag produced: first untracked
+        output files, then a tracked result file that an earlier run in the
+        same sequence had rewritten. Neither changes the code about to run.
+        """
+        self._repo(tmp_path)
+        (tmp_path / "results").mkdir()
+        (tmp_path / "results" / "layer_sweep.csv").write_text("a", encoding="utf-8")
+        subprocess.run(["git", "add", "."], cwd=tmp_path, check=True)
+        subprocess.run(["git", "commit", "-qm", "results"], cwd=tmp_path, check=True)
+        (tmp_path / "results" / "layer_sweep.csv").write_text("b", encoding="utf-8")
+
+        revision = git_revision(tmp_path)
+
+        assert revision.dirty is False
+        assert revision.output_paths_changed == 1
+
+    def test_a_changed_source_file_is_still_a_dirty_tree(self, tmp_path: Path) -> None:
+        """The exclusion must not swallow the case the flag exists for."""
+        self._repo(tmp_path)
+        (tmp_path / "a.txt").write_text("changed", encoding="utf-8")
+
+        assert git_revision(tmp_path).dirty is True
+
+    def test_untracked_results_are_not_counted_as_untracked_code(self, tmp_path: Path) -> None:
+        """A brand-new run directory is output, not an uncommitted module."""
+        self._repo(tmp_path)
+        (tmp_path / "results").mkdir()
+        (tmp_path / "results" / "new.csv").write_text("x", encoding="utf-8")
+
+        revision = git_revision(tmp_path)
+
+        assert revision.untracked == 0
+        assert revision.output_paths_changed == 1
 
     def test_outside_a_checkout_degrades_to_unknown(self, tmp_path: Path) -> None:
         """Running from a plain directory must not raise."""

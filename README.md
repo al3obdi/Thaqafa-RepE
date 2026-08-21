@@ -350,6 +350,20 @@ supplies sixteen, `gpt2-medium` twenty-eight, Qwen forty-four. The eight subtrac
 rather than filtered out: subtraction is not uniformly reversible even where
 addition works, and that asymmetry is what the check exists to surface.
 
+**Cross-lingual transfer needs the model to model both languages.** Steering
+with a concept's Arabic-only direction and reading with a probe trained
+entirely on English gives a median transfer ratio of 0.00 in `gpt2` and 0.00
+in `gpt2-medium` — the Arabic direction does nothing an English reader
+notices — against **0.62 in Qwen**, where 24 of 39 usable points transfer at
+half the ceiling or better. Tripling the parameters within English does not
+start it; training on the language does.
+
+That is the same shape as the readability result below, measured a different
+way, and it is the sharper of the two: the geometric check found aligned
+cosines only ~0.18 above their mismatched controls, which would have
+suggested the two languages barely share a direction. Behaviourally they
+share most of one.
+
 **`gpt2-medium` is there to separate scale from language coverage**, which the
 first two runs confounded. It is the same family, tokenizer and training
 distribution as `gpt2` with 2.9× the parameters, so the step from `gpt2` to it
@@ -380,7 +394,10 @@ compares steering with prompt-engineering baselines, checks whether a concept's
 Arabic-only and English-only directions agree, asks whether steering with a
 concept's direction makes that concept's own probe fire on neutral prompts, and
 asks the mirror question: whether *subtracting* the direction stops that probe
-recognising the concept's own held-out exemplars.
+recognising the concept's own held-out exemplars — and finally whether the
+Arabic-only direction steers a probe trained entirely on English, which is the
+behavioural version of the cross-lingual question the cosine only answers
+geometrically.
 
 Each of those last two carries a control, because the headline number alone
 would be uninterpretable: two directions at one layer can be similar for
@@ -419,8 +436,8 @@ Thaqafa-RepE/
 │   ├── models/rep_engine.py       # CulturalRepE: extraction and injection
 │   ├── utils/baselines.py         # Prompt-engineering comparison conditions
 │   ├── utils/evaluation.py        # Strength and layer sweeps, effect vs cost
-│   ├── utils/causal.py            # Read-back: does steering write what probes read
-│   ├── utils/crosslingual.py      # Arabic/English direction agreement
+│   ├── utils/causal.py            # Read-back and suppression, each vs a random control
+│   ├── utils/crosslingual.py      # Arabic/English agreement, and steering transfer
 │   ├── utils/probes.py            # Cross-validated linear probes per layer
 │   ├── utils/provenance.py        # Run manifests: commit, seed, dataset hash
 │   └── utils/visualization.py     # Layer sweeps, similarity heatmaps

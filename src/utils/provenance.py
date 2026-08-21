@@ -38,6 +38,14 @@ TRACKED_PACKAGES: tuple[str, ...] = (
 UNKNOWN = "unknown"
 """Placeholder used when a value genuinely cannot be determined."""
 
+OUTPUT_PREFIX = "results/"
+"""Tree holding committed run artefacts.
+
+Changes here are excluded from :attr:`GitRevision.dirty` and counted
+separately. Nothing in the pipeline reads this tree - it is written by runs
+and read by people - so a difference in it cannot change what a run computes.
+"""
+
 
 @dataclass(frozen=True)
 class GitRevision:
@@ -49,18 +57,24 @@ class GitRevision:
         dirty: Whether *tracked* files differed from the commit. This is the
             flag that matters: it means the commit alone does not identify the
             code that ran, so results produced from one are provisional.
-        untracked: How many untracked paths were present. Reported separately
-            because a run writes its own output into the tree, so counting
-            those as "dirty" would raise the alarm on every single run and
-            teach a reader to ignore the flag that does matter. A non-zero
-            count is still worth seeing: an untracked file can be a module the
-            run imported but nobody committed.
+        untracked: How many untracked paths were present, excluding
+            :data:`OUTPUT_PREFIX`. A non-zero count is worth seeing: an
+            untracked file can be a module the run imported but nobody
+            committed.
+        output_paths_changed: How many paths under :data:`OUTPUT_PREFIX`
+            differed. Counted, not ignored, so the exclusion is visible - but
+            kept out of :attr:`dirty`, because results are outputs of runs and
+            never inputs to them. Nothing in the pipeline reads that tree, so a
+            run that rewrote an earlier run's output has not changed the code
+            it is about to execute, and flagging it would raise the alarm on
+            every sequential run until nobody read the flag at all.
     """
 
     commit: str
     branch: str
     dirty: bool
     untracked: int = 0
+    output_paths_changed: int = 0
 
     def as_dict(self) -> dict[str, Any]:
         """Return the revision as plain JSON-serialisable data."""
@@ -69,6 +83,7 @@ class GitRevision:
             "branch": self.branch,
             "dirty": self.dirty,
             "untracked": self.untracked,
+            "output_paths_changed": self.output_paths_changed,
         }
 
 
@@ -114,17 +129,30 @@ def git_revision(repo_root: Path | str = ".") -> GitRevision:
     commit = _git(["rev-parse", "HEAD"], root) or UNKNOWN
     branch = _git(["rev-parse", "--abbrev-ref", "HEAD"], root) or UNKNOWN
 
-    tracked = _git(["status", "--porcelain", "--untracked-files=no"], root)
     everything = _git(["status", "--porcelain"], root)
+    tracked_changes = 0
     untracked = 0
-    if everything:
-        untracked = sum(1 for line in everything.splitlines() if line.startswith("??"))
+    output_changes = 0
+    for line in (everything or "").splitlines():
+        # Split on the first space rather than slicing a fixed width: the
+        # command's output is stripped as a whole, so the first line loses the
+        # leading space that porcelain format puts before a single-letter
+        # status and every later line keeps it.
+        status, _, path = line.strip().partition(" ")
+        cleaned = path.strip().strip('"')
+        if cleaned.startswith(OUTPUT_PREFIX):
+            output_changes += 1
+        elif status == "??":
+            untracked += 1
+        else:
+            tracked_changes += 1
 
     return GitRevision(
         commit=commit,
         branch=branch,
-        dirty=bool(tracked),
+        dirty=bool(tracked_changes),
         untracked=untracked,
+        output_paths_changed=output_changes,
     )
 
 

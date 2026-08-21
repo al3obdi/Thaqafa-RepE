@@ -1,8 +1,8 @@
 # Pilot results: `gpt2`
 
 - **Model**: `gpt2` on cpu (float32)
-- **Commit**: `d5492a2cf65c`
-- **Run (UTC)**: 2026-08-20T16:57:48+00:00
+- **Commit**: `b41bdefe9443`
+- **Run (UTC)**: 2026-08-21T14:34:55+00:00
 - **Seed**: 42
 - **Dataset SHA-256**: `52a52e5705f38566...`
 
@@ -343,6 +343,101 @@ direction, not that nothing else changed.
 | `hayaa_001` | 8 | 9 | 0.71 | -0.05 | 0.92 | 0.42 | 0.86 | +0.44 |
 | `hayaa_001` | 8 | 9 | 0.71 | -0.02 | 0.92 | 0.83 | 0.89 | +0.06 |
 
+## 7. Does one language's direction steer the other's reader?
+
+Section 4 asks the geometric question and answers it with a
+cosine. This asks the behavioural one, which can disagree: a
+modest cosine in a high-dimensional space still leaves a large
+shared component, and a probe reads a projection, not an angle.
+
+The probe and the prompts both come from `read`, so nothing in
+the measurement is bilingual except the injected direction. A
+rise cannot be the reader recognising the other script - it
+never sees any.
+
+`own` is the ceiling: what the reader's own language direction
+achieved over the random floor. `other` is the transfer.
+`ratio` is the second as a fraction of the first, so 1.00 means
+the other language's direction moved this reader exactly as far
+as its own did. Rates saturate, and at a saturated point both
+arms sit at 1.00 and the ratio reads 1.00 for free - which is
+why every strength is here.
+
+| Concept | Read | Probe | Strength | Own lift | Transfer lift | Ratio |
+|---|---|---|---|---|---|---|
+| `wasta_001` | en | 0.50 | 0.20 | +0.61 | +0.36 | 0.59 |
+| `wasta_001` | en | 0.50 | 0.10 | +0.42 | +0.17 | 0.40 |
+| `wasta_001` | en | 0.50 | 0.05 | +0.31 | +0.06 | 0.18 |
+| `wasta_001` | en | 0.50 | 0.02 | +0.17 | +0.00 | 0.00 |
+| `wasta_001` | ar | 0.38 | 0.10 | +0.75 | +0.08 | 0.11 |
+| `wasta_001` | ar | 0.38 | 0.02 | +0.53 | +0.03 | 0.05 |
+| `wasta_001` | ar | 0.38 | 0.05 | +0.75 | +0.00 | 0.00 |
+| `wasta_001` | ar | 0.38 | 0.20 | +0.67 | -0.17 | -0.25 |
+| `diyafa_001` | en | 0.88 | 0.20 | +0.44 | +0.28 | 0.62 |
+| `diyafa_001` | en | 0.88 | 0.10 | +0.42 | +0.17 | 0.40 |
+| `diyafa_001` | en | 0.88 | 0.05 | +0.33 | +0.08 | 0.25 |
+| `diyafa_001` | en | 0.88 | 0.02 | +0.17 | +0.00 | 0.00 |
+| `diyafa_001` | ar | 0.69 | 0.20 | +0.75 | +0.75 | 1.00 |
+| `diyafa_001` | ar | 0.69 | 0.10 | +0.69 | +0.44 | 0.64 |
+| `diyafa_001` | ar | 0.69 | 0.02 | +0.36 | +0.19 | 0.54 |
+| `diyafa_001` | ar | 0.69 | 0.05 | +0.67 | +0.25 | 0.38 |
+| `sharaf_001` | en | 0.75 | 0.20 | +0.89 | +0.31 | 0.34 |
+| `sharaf_001` | en | 0.75 | 0.10 | +0.94 | +0.11 | 0.12 |
+| `sharaf_001` | en | 0.75 | 0.02 | +0.42 | +0.00 | 0.00 |
+| `sharaf_001` | en | 0.75 | 0.05 | +1.00 | +0.00 | 0.00 |
+| `sharaf_001` | ar | 0.88 | 0.20 | +0.67 | +0.58 | 0.88 |
+| `sharaf_001` | ar | 0.88 | 0.10 | +0.53 | +0.28 | 0.53 |
+| `sharaf_001` | ar | 0.88 | 0.05 | +0.61 | +0.03 | 0.05 |
+| `sharaf_001` | ar | 0.88 | 0.02 | +0.33 | +0.00 | 0.00 |
+| `sabr_001` | en | 0.88 | 0.10 | +0.81 | -0.19 | -0.24 |
+| `sabr_001` | en | 0.88 | 0.05 | +0.58 | -0.17 | -0.29 |
+| `sabr_001` | en | 0.88 | 0.20 | +0.78 | -0.22 | -0.29 |
+| `sabr_001` | en | 0.88 | 0.02 | +0.25 | -0.08 | -0.33 |
+| `sabr_001` | ar | 0.75 | 0.20 | +0.61 | +0.61 | 1.00 |
+| `sabr_001` | ar | 0.75 | 0.10 | +0.56 | +0.39 | 0.70 |
+| `sabr_001` | ar | 0.75 | 0.05 | +0.47 | +0.14 | 0.29 |
+| `sabr_001` | ar | 0.75 | 0.02 | +0.42 | +0.08 | 0.20 |
+| `silat_rahim_001` | en | 0.56 | 0.02 | +0.00 | +0.00 | 0.00 |
+| `silat_rahim_001` | en | 0.56 | 0.05 | +0.33 | +0.00 | 0.00 |
+| `silat_rahim_001` | en | 0.56 | 0.10 | +1.00 | +0.00 | 0.00 |
+| `silat_rahim_001` | en | 0.56 | 0.20 | +1.00 | +0.00 | 0.00 |
+| `silat_rahim_001` | ar | 0.62 | 0.20 | +0.75 | +0.25 | 0.33 |
+| `silat_rahim_001` | ar | 0.62 | 0.02 | +0.72 | +0.06 | 0.08 |
+| `silat_rahim_001` | ar | 0.62 | 0.10 | +0.78 | +0.03 | 0.04 |
+| `silat_rahim_001` | ar | 0.62 | 0.05 | +0.83 | +0.00 | 0.00 |
+| `jiwar_001` | en | 0.75 | 0.02 | +0.25 | +0.00 | 0.00 |
+| `jiwar_001` | en | 0.75 | 0.05 | +0.92 | +0.00 | 0.00 |
+| `jiwar_001` | en | 0.75 | 0.10 | +1.00 | +0.00 | 0.00 |
+| `jiwar_001` | en | 0.75 | 0.20 | +1.00 | +0.00 | 0.00 |
+| `jiwar_001` | ar | 0.62 | 0.20 | +0.69 | +0.28 | 0.40 |
+| `jiwar_001` | ar | 0.62 | 0.10 | +0.64 | +0.06 | 0.09 |
+| `jiwar_001` | ar | 0.62 | 0.02 | +0.33 | +0.00 | 0.00 |
+| `jiwar_001` | ar | 0.62 | 0.05 | +0.58 | +0.00 | 0.00 |
+| `shura_001` | en | 0.69 | 0.02 | +0.83 | +0.00 | 0.00 |
+| `shura_001` | en | 0.69 | 0.05 | +0.89 | -0.03 | -0.03 |
+| `shura_001` | en | 0.69 | 0.20 | +0.72 | -0.11 | -0.15 |
+| `shura_001` | en | 0.69 | 0.10 | +0.86 | -0.14 | -0.16 |
+| `shura_001` | ar | 0.75 | 0.02 | +0.25 | +0.00 | 0.00 |
+| `shura_001` | ar | 0.75 | 0.05 | +0.25 | +0.00 | 0.00 |
+| `shura_001` | ar | 0.75 | 0.10 | +0.33 | +0.00 | 0.00 |
+| `shura_001` | ar | 0.75 | 0.20 | +0.33 | +0.00 | 0.00 |
+| `fazaa_001` | en | 0.88 | 0.20 | +0.42 | +0.42 | 1.00 |
+| `fazaa_001` | en | 0.88 | 0.10 | +0.39 | +0.14 | 0.36 |
+| `fazaa_001` | en | 0.88 | 0.02 | +0.11 | +0.03 | 0.25 |
+| `fazaa_001` | en | 0.88 | 0.05 | +0.28 | +0.03 | 0.10 |
+| `fazaa_001` | ar | 0.62 | 0.10 | +0.42 | +0.00 | 0.00 |
+| `fazaa_001` | ar | 0.62 | 0.02 | +0.22 | -0.03 | -0.12 |
+| `fazaa_001` | ar | 0.62 | 0.05 | +0.36 | -0.06 | -0.15 |
+| `fazaa_001` | ar | 0.62 | 0.20 | +0.33 | -0.08 | -0.25 |
+| `hayaa_001` | en | 0.62 | 0.02 | +0.17 | +0.00 | 0.00 |
+| `hayaa_001` | en | 0.62 | 0.05 | +0.44 | -0.06 | -0.12 |
+| `hayaa_001` | en | 0.62 | 0.10 | +0.69 | -0.14 | -0.20 |
+| `hayaa_001` | en | 0.62 | 0.20 | +0.44 | -0.39 | -0.88 |
+| `hayaa_001` | ar | 0.75 | 0.05 | +0.64 | -0.03 | -0.04 |
+| `hayaa_001` | ar | 0.75 | 0.02 | +0.56 | -0.03 | -0.05 |
+| `hayaa_001` | ar | 0.75 | 0.10 | +0.61 | -0.22 | -0.36 |
+| `hayaa_001` | ar | 0.75 | 0.20 | +0.56 | -0.28 | -0.50 |
+
 ## Limitations
 
 - Small exemplar sets mean wide confidence intervals; no claim here
@@ -357,6 +452,11 @@ direction, not that nothing else changed.
 - A small p-value says the labelling is unlikely to be unrelated to
   the activations. It does not say the probe found the concept
   rather than a word the exemplars happen to share.
+- The transfer check reads a projection, not a meaning. It shows
+  one language's direction moving the other language's probe; that
+  probe was trained on twelve exemplars of the same concept, so a
+  high ratio says the two directions share what that probe reads,
+  not that the model holds one cultural concept across languages.
 - The read-back shows a written direction reaching the probe that
   reads it, across one transformer block. Both sides come from the
   same twelve exemplars, so it is a consistency check on the

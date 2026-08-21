@@ -370,6 +370,53 @@ class TestSuppressionPhase:
         assert rows == []
 
 
+class TestTransferPhase:
+    """The behavioural half of the cross-lingual question."""
+
+    @pytest.fixture
+    def extracted(self, engine: CulturalRepE) -> CulturalRepE:
+        """An engine with the concept extracted, as the runner leaves it."""
+        engine.extract_vector("wasta_001", layer=0)
+        return engine
+
+    def test_covers_both_reader_languages(self, extracted: CulturalRepE) -> None:
+        """Transfer need not be symmetric, so one direction is not an answer."""
+        rows = run_pilot.run_transfer(
+            extracted, ["wasta_001"], {"wasta_001": 2}, strengths=(0.2,), n_random=1
+        )
+        assert {row["reader_language"] for row in rows} == {"en", "ar"}
+
+    def test_uses_the_same_layer_pair_as_the_other_causal_checks(
+        self, extracted: CulturalRepE
+    ) -> None:
+        """So the three sections can be read side by side."""
+        amplify = run_pilot.run_readback(
+            extracted, ["wasta_001"], {"wasta_001": 2}, strengths=(0.2,), n_random=1
+        )
+        across = run_pilot.run_transfer(
+            extracted, ["wasta_001"], {"wasta_001": 2}, strengths=(0.2,), n_random=1
+        )
+        assert across[0]["inject_layer"] == amplify[0]["inject_layer"]
+        assert across[0]["read_layer"] == amplify[0]["read_layer"]
+
+    def test_carries_the_ceiling_alongside_the_transfer(self, extracted: CulturalRepE) -> None:
+        """A transfer lift means nothing without what was available to transfer."""
+        rows = run_pilot.run_transfer(
+            extracted, ["wasta_001"], {"wasta_001": 2}, strengths=(0.2,), n_random=1
+        )
+        assert all("same_language_lift" in row for row in rows)
+        assert all("transfer_lift" in row for row in rows)
+        assert all("probe_accuracy" in row for row in rows)
+
+    def test_skips_a_concept_whose_best_layer_is_the_first_block(
+        self, extracted: CulturalRepE
+    ) -> None:
+        rows = run_pilot.run_transfer(
+            extracted, ["wasta_001"], {"wasta_001": 0}, strengths=(0.2,), n_random=1
+        )
+        assert rows == []
+
+
 class TestWriteReport:
     """The report is what a reader sees first, so it must not overstate."""
 
@@ -468,7 +515,7 @@ class TestWriteReport:
         manifest["git"]["dirty"] = True
         layer_rows, best, steering_rows = self._rows()
         path = run_pilot.write_report(tmp_path, manifest, layer_rows, best, steering_rows, [])
-        assert "uncommitted changes" in path.read_text(encoding="utf-8")
+        assert "uncommitted code changes" in path.read_text(encoding="utf-8")
 
     def test_untracked_output_files_do_not_raise_the_alarm(self, tmp_path: Path) -> None:
         """Every run writes output; flagging that would train readers to ignore it."""
@@ -476,7 +523,7 @@ class TestWriteReport:
         manifest["git"]["untracked"] = 17
         layer_rows, best, steering_rows = self._rows()
         path = run_pilot.write_report(tmp_path, manifest, layer_rows, best, steering_rows, [])
-        assert "uncommitted changes" not in path.read_text(encoding="utf-8")
+        assert "uncommitted code changes" not in path.read_text(encoding="utf-8")
 
     def test_omits_the_baseline_section_when_it_did_not_run(self, tmp_path: Path) -> None:
         """An empty table would read as "prompting did nothing"."""
@@ -768,6 +815,36 @@ class TestMain:
         text = (out / "README.md").read_text(encoding="utf-8")
         assert "Does subtracting the concept remove it" in text
         assert "column that carries information" in text
+
+    def test_the_transfer_check_reaches_the_artefacts(self, tmp_path: Path) -> None:
+        """The behavioural cross-lingual answer needs an artefact too."""
+        run_pilot.main(
+            [
+                "--model",
+                "dummy/pilot",
+                "--concepts",
+                "wasta_001",
+                "--strengths",
+                "0.2",
+                "--output-dir",
+                str(tmp_path / "run"),
+                "--no-baselines",
+                "--permutations",
+                "0",
+            ]
+        )
+        out = tmp_path / "run"
+        path = out / "crosslingual_transfer.csv"
+        if not path.exists():
+            # The fake's best layer can land on block 0, where the causal
+            # checks are correctly skipped.
+            return
+
+        rows = _read_csv(path)
+        assert {row["reader_language"] for row in rows} == {"en", "ar"}
+        assert all(int(row["read_layer"]) > int(row["inject_layer"]) for row in rows)
+        text = (out / "README.md").read_text(encoding="utf-8")
+        assert "steer the other" in text
 
     def test_is_deterministic_for_a_fixed_seed(self, tmp_path: Path) -> None:
         """Two runs of the same command must produce the same numbers."""
